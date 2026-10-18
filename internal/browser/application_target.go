@@ -177,6 +177,7 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 		target = types.DefaultApplicationTarget
 	}
 	log.Printf("🎯 Желаемое количество откликов: %d", target)
+	evaluatedIndex := 0
 	summary, err := runApplicationTarget(target, queries, applicationOperations{
 		search: func(query string, page int) ([]types.Job, error) {
 			log.Printf("🔍 Ищу вакансии: %s, страница %d", query, page+1)
@@ -190,8 +191,12 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 			return jobs, err
 		},
 		evaluate: func(job types.Job) (*JobEvaluationResult, error) {
+			evaluatedIndex++
+			log.Printf("🤔 Анализирую вакансию %d/%d: %s | URL: %s", evaluatedIndex, a.vacancyLimit, job.Title, job.URL)
 			evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
-			if err == nil {
+			if err != nil {
+				log.Printf("❌ Ошибка оценки: %v", err)
+			} else {
 				a.printJobAnalysis(job, evaluation)
 			}
 			return evaluation, err

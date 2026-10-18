@@ -64,6 +64,7 @@ type taskState struct {
 	Running   bool          `json:"running"`
 	Status    string        `json:"status"`
 	Cards     []vacancyCard `json:"cards"`
+	Output    string        `json:"output,omitempty"`
 	StartedAt *time.Time    `json:"startedAt,omitempty"`
 }
 
@@ -481,6 +482,7 @@ func (s *server) launchCommand(args []string, successStatus string) error {
 	s.mu.Unlock()
 	go func() {
 		err := cmd.Wait()
+		output.Flush()
 		s.mu.Lock()
 		cancelled := s.cancelRequested
 		s.activeCmd = nil
@@ -491,8 +493,16 @@ func (s *server) launchCommand(args []string, successStatus string) error {
 			return
 		}
 		if err != nil {
-			s.appendOutput("\nОшибка: " + err.Error() + "\n")
-			s.setFinished("Задача завершилась с ошибкой", err.Error())
+			s.mu.Lock()
+			diagnostic := s.state.Output
+			s.mu.Unlock()
+			detail := err.Error()
+			for _, line := range strings.Split(diagnostic, "\n") {
+				if strings.Contains(line, "Agent failed:") || strings.Contains(line, "Ошибка отклика:") || strings.Contains(line, "Ошибка оценки:") {
+					detail = strings.TrimSpace(line)
+				}
+			}
+			s.setFinished("Задача завершилась с ошибкой", detail)
 			return
 		}
 		s.setFinished(successStatus, "")
@@ -558,6 +568,13 @@ func cleanSkills(skills []string) []string {
 }
 
 func (s *server) appendOutput(text string) {
+	s.mu.Lock()
+	s.state.Output += text
+	runes := []rune(s.state.Output)
+	if len(runes) > 32000 {
+		s.state.Output = string(runes[len(runes)-32000:])
+	}
+	s.mu.Unlock()
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -718,11 +735,37 @@ func (s *server) setFinished(status, detail string) {
 	}
 }
 
-type outputWriter struct{ server *server }
+type outputWriter struct {
+	server  *server
+	mu      sync.Mutex
+	pending string
+}
 
 func (w *outputWriter) Write(data []byte) (int, error) {
-	w.server.appendOutput(string(data))
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.pending += string(data)
+	for {
+		line, rest, ok := strings.Cut(w.pending, "\n")
+		if !ok {
+			break
+		}
+		w.pending = rest
+		w.server.appendOutput(line + "\n")
+	}
+	if len(w.pending) > 65536 {
+		w.server.appendOutput(w.pending)
+		w.pending = ""
+	}
 	return len(data), nil
+}
+func (w *outputWriter) Flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.pending != "" {
+		w.server.appendOutput(w.pending)
+		w.pending = ""
+	}
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
