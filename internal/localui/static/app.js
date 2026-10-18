@@ -3,6 +3,7 @@ const taskForm = $("#run-form");
 const profileForm = $("#profile-form");
 const runButton = $("#run-button");
 const stopButton = $("#stop-button");
+const loginButton = $("#login-button");
 const output = $("#output");
 const statusChip = $("#status-chip");
 const statusText = $("#status-text");
@@ -207,7 +208,26 @@ taskForm.addEventListener("submit", async (event) => {
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
     runButton.disabled = state.running;
-    label.textContent = state.running ? "Идёт поиск…" : "Начать поиск";
+    loginButton.disabled = state.running;
+    label.textContent = state.running ? "Выполняется…" : "Начать поиск";
+  }
+});
+
+loginButton.addEventListener("click", async () => {
+  loginButton.disabled = true;
+  loginButton.textContent = "Открываю hh.ru…";
+  try {
+    await request("/api/login", { method: "POST" });
+    output.textContent = "Открыл hh.ru для ручного входа. Поиск не запустится автоматически. Закройте окно hh.ru после авторизации.";
+    lastOutput = output.textContent;
+    await refreshState();
+  } catch (error) {
+    output.textContent = error.message;
+    lastOutput = error.message;
+  } finally {
+    const state = await request("/api/state").catch(() => ({ running: false }));
+    loginButton.disabled = state.running;
+    loginButton.textContent = "Только войти на hh.ru";
   }
 });
 
@@ -223,7 +243,8 @@ stopButton.addEventListener("click", async () => {
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
     stopButton.disabled = !state.running || /останавливаю/i.test(state.status || "");
-    stopButton.textContent = /останавливаю/i.test(state.status || "") ? "Останавливаю…" : "Остановить поиск";
+  stopButton.textContent = /останавливаю/i.test(state.status || "") ? "Останавливаю…" : "Остановить";
+  loginButton.disabled = Boolean(state.running);
   }
 });
 
@@ -234,10 +255,10 @@ async function refreshState() {
   statusChip.classList.toggle("is-done", !state.running && state.status === "Поиск завершён");
   statusChip.classList.toggle("is-error", !state.running && /ошибк|не удалось/i.test(state.status || ""));
   runButton.disabled = Boolean(state.running);
-  runButton.querySelector("span").textContent = state.running ? "Идёт поиск…" : "Начать поиск";
+  runButton.querySelector("span").textContent = state.running ? "Выполняется…" : "Начать поиск";
   stopButton.hidden = !state.running;
   stopButton.disabled = /останавливаю/i.test(state.status || "");
-  stopButton.textContent = stopButton.disabled ? "Останавливаю…" : "Остановить поиск";
+  stopButton.textContent = stopButton.disabled ? "Останавливаю…" : "Остановить";
 
   if (state.output && state.output !== lastOutput) {
     output.textContent = state.output;

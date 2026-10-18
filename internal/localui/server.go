@@ -91,6 +91,7 @@ func Start(cfg types.Config, address string) error {
 	mux.HandleFunc("POST /api/hr/reply", app.handleDraftHRReply)
 	mux.HandleFunc("GET /api/state", app.handleState)
 	mux.HandleFunc("POST /api/run", app.handleRun)
+	mux.HandleFunc("POST /api/login", app.handleLogin)
 	mux.HandleFunc("POST /api/cancel", app.handleCancel)
 	mux.HandleFunc("POST /api/clear", app.handleClear)
 
@@ -299,7 +300,7 @@ func (s *server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	if !s.state.Running || s.activeCmd == nil || s.cancelRequested {
 		s.mu.Unlock()
-		writeError(w, http.StatusConflict, "Сейчас нет активного поиска для остановки")
+		writeError(w, http.StatusConflict, "Сейчас нет активной задачи для остановки")
 		return
 	}
 	cmd := s.activeCmd
@@ -315,7 +316,7 @@ func (s *server) handleCancel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось остановить процесс: "+err.Error())
 		return
 	}
-	s.appendOutput("\nПоиск остановлен по запросу пользователя.\n")
+	s.appendOutput("\nЗадача остановлена по запросу пользователя.\n")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Останавливаю поиск…"})
 }
 
@@ -340,16 +341,10 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.mu.Lock()
-	if s.state.Running {
-		s.mu.Unlock()
+	if !s.beginTask("Запускаю браузер…") {
 		writeError(w, http.StatusConflict, "Задача уже выполняется")
 		return
 	}
-	startedAt := time.Now()
-	s.state = taskState{Running: true, Status: "Запускаю браузер…", StartedAt: &startedAt}
-	s.cancelRequested = false
-	s.mu.Unlock()
 
 	args := []string{
 		"--task=" + input.Task,
@@ -361,25 +356,64 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		"--model=" + s.cfg.ModelName,
 		"--debug=" + fmt.Sprint(s.cfg.Debug),
 	}
-	executable, err := os.Executable()
-	if err != nil {
+	if err := s.launchCommand(args, "Поиск завершён"); err != nil {
 		s.setFinished("Не удалось запустить агент", err.Error())
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "Задача запущена"})
+
+}
+
+func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if !s.beginTask("Открываю hh.ru для входа…") {
+		writeError(w, http.StatusConflict, "Сначала остановите текущую задачу")
+		return
+	}
+	args := []string{
+		"--login-only=true",
+		"--headless=false",
+		"--auto-apply=false",
+		"--profile=" + s.cfg.ProfileDir,
+		"--model-url=" + s.cfg.ModelURL,
+		"--model=" + s.cfg.ModelName,
+		"--debug=" + fmt.Sprint(s.cfg.Debug),
+	}
+	if err := s.launchCommand(args, "Окно hh.ru закрыто"); err != nil {
+		s.setFinished("Не удалось открыть hh.ru", err.Error())
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "Открываю hh.ru для входа"})
+}
+
+func (s *server) beginTask(status string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Running {
+		return false
+	}
+	startedAt := time.Now()
+	s.state = taskState{Running: true, Status: status, StartedAt: &startedAt}
+	s.cancelRequested = false
+	return true
+}
+
+func (s *server) launchCommand(args []string, successStatus string) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return err
 	}
 	cmd := exec.Command(executable, args...)
 	output := &outputWriter{server: s}
 	cmd.Stdout = output
 	cmd.Stderr = output
 	if err := cmd.Start(); err != nil {
-		s.setFinished("Не удалось запустить агент", err.Error())
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	s.mu.Lock()
 	s.activeCmd = cmd
 	s.mu.Unlock()
-	writeJSON(w, http.StatusAccepted, map[string]string{"status": "Задача запущена"})
 	go func() {
 		err := cmd.Wait()
 		s.mu.Lock()
@@ -388,7 +422,7 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		s.cancelRequested = false
 		s.mu.Unlock()
 		if cancelled {
-			s.setFinished("Поиск остановлен", "")
+			s.setFinished("Задача остановлена", "")
 			return
 		}
 		if err != nil {
@@ -396,8 +430,9 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 			s.setFinished("Задача завершилась с ошибкой", err.Error())
 			return
 		}
-		s.setFinished("Поиск завершён", "")
+		s.setFinished(successStatus, "")
 	}()
+	return nil
 }
 
 func (s *server) readProfile() (types.Resume, error) {

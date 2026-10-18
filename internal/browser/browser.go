@@ -93,6 +93,39 @@ func createRegularContext(pw *playwright.Playwright, headless bool) (playwright.
 	return ctx, nil
 }
 
+// OpenLogin opens hh.ru in the persistent local profile and leaves the page
+// under the user's control. It never resumes a search or submits applications.
+func OpenLogin(cfg Config) error {
+	pw, err := playwright.Run()
+	if err != nil {
+		return fmt.Errorf("could not start playwright: %w", err)
+	}
+	defer pw.Stop()
+
+	ctx, err := createBrowserContext(pw, cfg.ProfileDir, false, cfg.Debug)
+	if err != nil {
+		return fmt.Errorf("could not open browser profile: %w", err)
+	}
+	defer ctx.Close()
+
+	page, err := ctx.NewPage()
+	if err != nil {
+		return fmt.Errorf("could not create login page: %w", err)
+	}
+	if err := navigateWithRetry(page, "https://hh.ru/account/login", 30_000); err != nil {
+		return fmt.Errorf("could not open hh.ru login page: %w", err)
+	}
+	if err := page.BringToFront(); err != nil {
+		log.Printf("Could not bring hh.ru login page to front: %v", err)
+	}
+
+	fmt.Println("Окно hh.ru открыто. Войдите в аккаунт вручную; агент не продолжит поиск. Закройте окно после входа.")
+	for !page.IsClosed() {
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil
+}
+
 func RunTask(task string, cfg Config) error {
 	log.Printf("Starting task: %s (AI mode: %v, Debug: %v)\n", task, cfg.UseAI, cfg.Debug)
 

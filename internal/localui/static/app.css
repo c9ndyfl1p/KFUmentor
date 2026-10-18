@@ -194,6 +194,8 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
 .apply-note { margin-top: 12px; padding: 10px 12px; color: #80500c; background: var(--amber-soft); border: 1px solid #f0dfb8; border-radius: 7px; font-size: 12px; }
 .form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 21px; }
 .form-footer [hidden] { display: none; }
+.login-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.login-row small { color: var(--muted); line-height: 1.4; }
 .privacy-hint { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
 .privacy-hint svg { width: 17px; height: 17px; color: #6d8496; }
 
@@ -332,6 +334,8 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
   .toggle-row { min-height: 71px; }
   .toggle-copy small { max-width: 280px; }
   .form-footer { align-items: stretch; flex-direction: column; }
+  .login-row { align-items: stretch; flex-direction: column; }
+  .login-row .button { width: 100%; }
   .privacy-hint { order: 2; }
   .form-footer .button { width: 100%; }
   .profile-card form { display: block; }
