@@ -687,9 +687,18 @@ func (a *AIOrchestrator) searchJobs(query string) (string, error) {
 	currentURL := a.page.URL()
 	log.Printf("📄 Текущий URL: %s", currentURL)
 
+	parsedURL, parseErr := url.Parse(currentURL)
+	if parseErr != nil || (parsedURL.Hostname() != "hh.ru" && !strings.HasSuffix(parsedURL.Hostname(), ".hh.ru")) {
+		return "", fmt.Errorf("hh.ru перенаправил поиск на неожиданный адрес: %s", currentURL)
+	}
+	if strings.Contains(parsedURL.Path, "/account/login") {
+		return "", fmt.Errorf("hh.ru перенаправил на вход; проверьте авторизацию и повторите поиск")
+	}
+	if parsedURL.Path != "/search/vacancy" && !strings.HasPrefix(parsedURL.Path, "/vacancies/") {
+		return "", fmt.Errorf("после поиска открылась не страница вакансий: %s", currentURL)
+	}
 	if !strings.Contains(currentURL, "text=") {
-		log.Println("⚠️ Похоже поиск не сработал, пробую через поле ввода...")
-		return a.searchViaInputField(query)
+		log.Println("ℹ️ hh.ru преобразовал поисковый URL в адрес страницы результатов")
 	}
 
 	return fmt.Sprintf("Поиск выполнен: %s", query), nil
