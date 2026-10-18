@@ -114,6 +114,11 @@ func (a *AIOrchestrator) executePlan(plan []AIAction) (string, error) {
 			log.Printf("⚠️ Ошибка на шаге %d: %v", i+1, err)
 			results = append(results, fmt.Sprintf("❌ Шаг %d: %s - Ошибка: %v",
 				i+1, action.Reason, err))
+			// A failed search leaves the previous page open. Never extract jobs
+			// from that page or continue toward applications after navigation fails.
+			if action.Action == "search" {
+				return strings.Join(results, "\n"), err
+			}
 			continue
 		}
 
@@ -239,6 +244,9 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 				log.Printf("❌ Ошибка отклика: %v", err)
 				results = append(results, fmt.Sprintf("❌ %s: ошибка отклика", job.Title))
 				errorCount++
+				// A navigation/interaction error can mean the browser is no longer
+				// on the expected vacancy. Stop automatic submissions for this run.
+				break
 			} else {
 				appliedCount++
 				results = append(results, fmt.Sprintf("✅ %s: отклик отправлен!", job.Title))
@@ -289,7 +297,7 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 	log.Printf("🌐 Перехожу на: %s", job.URL)
 	_, err = page.Goto(job.URL, playwright.PageGotoOptions{
 		Timeout:   playwright.Float(30000),
-		WaitUntil: playwright.WaitUntilStateLoad,
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	})
 	if err != nil {
 		return "", fmt.Errorf("не удалось перейти на вакансию: %w", err)
@@ -641,7 +649,7 @@ func (a *AIOrchestrator) navigate(url string) (string, error) {
 	log.Printf("🌐 Навигация на %s", url)
 	_, err := a.page.Goto(url, playwright.PageGotoOptions{
 		Timeout:   playwright.Float(30000),
-		WaitUntil: playwright.WaitUntilStateNetworkidle,
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	})
 	if err != nil {
 		return "", fmt.Errorf("навигация не удалась: %w", err)
@@ -663,7 +671,7 @@ func (a *AIOrchestrator) searchJobs(query string) (string, error) {
 	log.Printf("🌐 Перехожу на URL поиска: %s", searchURL)
 	_, err := a.page.Goto(searchURL, playwright.PageGotoOptions{
 		Timeout:   playwright.Float(30000),
-		WaitUntil: playwright.WaitUntilStateNetworkidle,
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	})
 	if err != nil {
 		return "", fmt.Errorf("ошибка перехода на страницу поиска: %w", err)
