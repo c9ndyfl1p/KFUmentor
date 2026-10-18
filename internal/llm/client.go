@@ -60,6 +60,21 @@ func (c *OllamaClient) Generate(prompt, systemPrompt string) (string, error) {
 	return c.generate(prompt, systemPrompt, "")
 }
 
+// GenerateWithBudget bounds a short generation call so slow local models do
+// not block the job workflow for the client's full default timeout.
+func (c *OllamaClient) GenerateWithBudget(prompt, systemPrompt string, maxTokens int, timeout time.Duration) (string, error) {
+	client := *c.HTTPClient
+	if timeout > 0 {
+		client.Timeout = timeout
+	}
+	bounded := *c
+	bounded.HTTPClient = &client
+	if bounded.openAICompatible() {
+		return bounded.openAIChatWithMaxTokens([]ChatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: prompt}}, false, maxTokens)
+	}
+	return bounded.generateWithMaxTokens(prompt, systemPrompt, "", maxTokens)
+}
+
 func (c *OllamaClient) GenerateJSON(prompt, systemPrompt string) (string, error) {
 	if c.openAICompatible() {
 		return c.openAIChat([]ChatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: prompt}}, true)
@@ -68,16 +83,24 @@ func (c *OllamaClient) GenerateJSON(prompt, systemPrompt string) (string, error)
 }
 
 func (c *OllamaClient) generate(prompt, systemPrompt, format string) (string, error) {
+	return c.generateWithMaxTokens(prompt, systemPrompt, format, 0)
+}
+
+func (c *OllamaClient) generateWithMaxTokens(prompt, systemPrompt, format string, maxTokens int) (string, error) {
+	options := map[string]interface{}{
+		"temperature": 0.2,
+		"top_p":       0.9,
+	}
+	if maxTokens > 0 {
+		options["num_predict"] = maxTokens
+	}
 	reqBody := GenerateRequest{
-		Model:  c.ModelName,
-		Prompt: prompt,
-		Stream: false,
-		System: systemPrompt,
-		Format: format,
-		Options: map[string]interface{}{
-			"temperature": 0.2,
-			"top_p":       0.9,
-		},
+		Model:   c.ModelName,
+		Prompt:  prompt,
+		Stream:  false,
+		System:  systemPrompt,
+		Format:  format,
+		Options: options,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -158,15 +181,20 @@ func (c *OllamaClient) openAICompatible() bool {
 }
 
 func (c *OllamaClient) openAIChat(messages []ChatMessage, jsonOnly bool) (string, error) {
+	return c.openAIChatWithMaxTokens(messages, jsonOnly, 0)
+}
+
+func (c *OllamaClient) openAIChatWithMaxTokens(messages []ChatMessage, jsonOnly bool, maxTokens int) (string, error) {
 	request := struct {
 		Model          string        `json:"model"`
 		Messages       []ChatMessage `json:"messages"`
 		Stream         bool          `json:"stream"`
 		Temperature    float64       `json:"temperature"`
+		MaxTokens      int           `json:"max_tokens,omitempty"`
 		ResponseFormat *struct {
 			Type string `json:"type"`
 		} `json:"response_format,omitempty"`
-	}{Model: c.ModelName, Messages: messages, Stream: false, Temperature: 0.2}
+	}{Model: c.ModelName, Messages: messages, Stream: false, Temperature: 0.2, MaxTokens: maxTokens}
 	if jsonOnly {
 		request.ResponseFormat = &struct {
 			Type string `json:"type"`

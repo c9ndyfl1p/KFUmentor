@@ -319,7 +319,7 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 			}
 		}
 	}
-	vacancyDescription = truncate(strings.Join(strings.Fields(vacancyDescription), " "), 4000)
+	vacancyDescription = truncateRunes(strings.Join(strings.Fields(vacancyDescription), " "), 1800)
 
 	coverLetter, err := a.generateCoverLetter(title, company, vacancyDescription)
 	if err != nil {
@@ -356,19 +356,27 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 	time.Sleep(2 * time.Second)
 
 	messageFieldSelectors := []string{
-		"textarea[name='message']",
 		"textarea[data-qa='vacancy-response-popup-form-letter-input']",
+		"textarea[name='message']",
 		"textarea",
+		"[contenteditable='true']",
 	}
 
+	letterFilled := false
 	for _, selector := range messageFieldSelectors {
 		field := page.Locator(selector)
 		if count, _ := field.Count(); count > 0 {
-			if err := field.First().Fill(coverLetter); err == nil {
+			first := field.First()
+			visible, _ := first.IsVisible()
+			if visible && first.Fill(coverLetter) == nil {
 				log.Println("✅ Сопроводительное письмо заполнено")
+				letterFilled = true
 				break
 			}
 		}
+	}
+	if !letterFilled {
+		return "", fmt.Errorf("сопроводительное подготовлено, но hh.ru не показал поле для него; отклик не отправлен")
 	}
 
 	submitBtnSelectors := []string{
@@ -635,9 +643,11 @@ func (a *AIOrchestrator) generateCoverLetter(title, company, vacancyDescription 
 		title, company, vacancyDescription,
 		candidateName, targetTitle, profileSummary, experience, strings.Join(skills, ", "))
 
-	letter, err := a.llmClient.Generate(prompt, "Ты помогаешь кандидату написать честное, персональное и краткое сопроводительное письмо. Никогда не придумывай факты.")
+	fallback := buildCoverLetterFallback(title, company, vacancyDescription, skills, profileSummary)
+	letter, err := a.llmClient.GenerateWithBudget(prompt, "Ты помогаешь кандидату написать честное, персональное и краткое сопроводительное письмо. Никогда не придумывай факты.", 128, 25*time.Second)
 	if err != nil {
-		return "", err
+		log.Printf("⚠️ Модель не успела написать сопроводительное: %v; использую проверенный черновик", err)
+		return fallback, nil
 	}
 
 	letter = cleanProfileText(letter)
@@ -647,10 +657,33 @@ func (a *AIOrchestrator) generateCoverLetter(title, company, vacancyDescription 
 	letter = truncateRunes(letter, 650)
 
 	if letter == "" {
-		letter = "Здравствуйте! Меня заинтересовала эта вакансия. Буду рад(а) обсудить, чем мой опыт может быть полезен вашей команде."
+		letter = fallback
 	}
 
 	return letter, nil
+}
+
+func buildCoverLetterFallback(title, company, description string, skills []string, summary string) string {
+	opening := "Меня заинтересовала вакансия «" + strings.TrimSpace(title) + "»"
+	if company = strings.TrimSpace(company); company != "" {
+		opening += " в компании «" + company + "»"
+	}
+	parts := []string{"Здравствуйте! " + opening + "."}
+
+	matchedSkills := make([]string, 0, len(skills))
+	for _, skill := range skills {
+		pattern := `(?i)(^|[^\p{L}\p{N}])` + regexp.QuoteMeta(skill) + `($|[^\p{L}\p{N}])`
+		if matched, _ := regexp.MatchString(pattern, description); matched {
+			matchedSkills = append(matchedSkills, skill)
+		}
+	}
+	if len(matchedSkills) > 0 {
+		parts = append(parts, "В моём профиле указаны навыки "+strings.Join(matchedSkills, ", ")+", которые встречаются в требованиях вакансии.")
+	} else if summary != "" && summary != "не указано" {
+		parts = append(parts, summary)
+	}
+	parts = append(parts, "Буду рад обсудить, чем могу быть полезен команде.")
+	return truncateRunes(strings.Join(parts, " "), 650)
 }
 
 func truncateRunes(value string, limit int) string {
