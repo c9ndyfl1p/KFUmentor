@@ -18,6 +18,7 @@ type Config struct {
 	ProfileDir string
 	ModelURL   string
 	ModelName  string
+	AreaID     int
 	MaxJobs    int
 	ResumePath string
 }

@@ -31,6 +31,7 @@ const (
 
 type taskInput struct {
 	Task      string `json:"task"`
+	AreaID    int    `json:"areaId"`
 	AutoApply bool   `json:"autoApply"`
 	Visible   bool   `json:"visible"`
 }
@@ -331,6 +332,10 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Введите задачу до 2000 символов")
 		return
 	}
+	if input.AreaID != 0 && !isSupportedArea(input.AreaID) {
+		writeError(w, http.StatusBadRequest, "Выберите город из списка")
+		return
+	}
 	profile, err := s.readProfile()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -356,6 +361,9 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		"--model=" + s.cfg.ModelName,
 		"--debug=" + fmt.Sprint(s.cfg.Debug),
 	}
+	if input.AreaID > 0 {
+		args = append(args, "--area="+fmt.Sprint(input.AreaID))
+	}
 	if err := s.launchCommand(args, "Поиск завершён"); err != nil {
 		s.setFinished("Не удалось запустить агент", err.Error())
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -363,6 +371,15 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "Задача запущена"})
 
+}
+
+func isSupportedArea(areaID int) bool {
+	switch areaID {
+	case 113, 1, 2, 3, 4, 66, 88, 78, 53, 22:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {

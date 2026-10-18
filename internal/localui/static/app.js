@@ -195,6 +195,7 @@ taskForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify({
         task: $("#task").value,
+        areaId: Number($("#city").value),
         autoApply: $("#auto-apply").checked,
         visible: $("#visible-browser").checked,
       }),

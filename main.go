@@ -52,6 +52,7 @@ func main() {
 	var web bool
 	var webAddr string
 	var loginOnly bool
+	var areaID int
 
 	flag.StringVar(&task, "task", "", "Task for the agent")
 	flag.BoolVar(&headless, "headless", true, "Run browser in headless mode")
@@ -65,6 +66,7 @@ func main() {
 	flag.BoolVar(&web, "web", false, "Start the local web interface")
 	flag.StringVar(&webAddr, "web-addr", "127.0.0.1:8787", "Local web interface address")
 	flag.BoolVar(&loginOnly, "login-only", false, "Open hh.ru for manual login without starting a search")
+	flag.IntVar(&areaID, "area", 0, "hh.ru area ID for vacancy search")
 	flag.Parse()
 
 	cfg, err := loadConfig()
@@ -87,6 +89,9 @@ func main() {
 		}
 		if resumePath != "" {
 			cfg.ResumePath = resumePath
+		}
+		if areaID > 0 {
+			cfg.AreaID = areaID
 		}
 	}
 

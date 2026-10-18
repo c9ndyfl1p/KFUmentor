@@ -25,6 +25,7 @@ type AIOrchestrator struct {
 	actionHistory     []map[string]interface{}
 	resume            types.Resume
 	autoApply         bool
+	areaID            int
 	lastEvaluatedJobs []types.Job
 }
 
@@ -666,7 +667,11 @@ func (a *AIOrchestrator) navigate(url string) (string, error) {
 
 func (a *AIOrchestrator) searchJobs(query string) (string, error) {
 	log.Printf("🔍 Поиск вакансий: %s", query)
-	searchURL := fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", url.QueryEscape(query), hhAreaForText(query))
+	areaID := a.areaID
+	if areaID == 0 {
+		areaID = hhAreaForText(query)
+	}
+	searchURL := fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", url.QueryEscape(query), areaID)
 
 	log.Printf("🌐 Перехожу на URL поиска: %s", searchURL)
 	_, err := a.page.Goto(searchURL, playwright.PageGotoOptions{

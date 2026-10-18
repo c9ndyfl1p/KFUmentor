@@ -189,6 +189,7 @@ func RunTask(task string, cfg Config) error {
 		log.Println("🔮 Использую AI-агента для выполнения задачи")
 
 		orchestrator := CreateLLMOrchestrator(cfg.ModelURL, cfg.ModelName, cfg.ResumePath, page, ctx, cfg.Debug)
+		orchestrator.areaID = cfg.AreaID
 
 		result, err := orchestrator.ExecuteTask(task, cfg.AutoApply)
 		if err != nil {
@@ -227,7 +228,7 @@ func RunTask(task string, cfg Config) error {
 				}
 			}
 
-			jobs, err := runHHSearch(page, query, loggedIn, cfg.AutoApply, cfg.Debug)
+			jobs, err := runHHSearch(page, query, loggedIn, cfg.AutoApply, cfg.Debug, cfg.AreaID)
 			if err != nil {
 				return err
 			}
@@ -370,9 +371,13 @@ func extractQueryFromTask(task string) string {
 
 const defaultHHArea = 113
 
-func buildHHSearchURL(query string) string {
+func buildHHSearchURL(query string, preferredArea ...int) string {
 	escaped := url.QueryEscape(query)
-	return fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", escaped, hhAreaForText(query))
+	areaID := hhAreaForText(query)
+	if len(preferredArea) > 0 && preferredArea[0] > 0 {
+		areaID = preferredArea[0]
+	}
+	return fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", escaped, areaID)
 }
 
 func hhAreaForText(text string) int {
@@ -626,9 +631,9 @@ func findSearchInput(page playwright.Page) (playwright.Locator, error) {
 	return nil, fmt.Errorf("no visible input found")
 }
 
-func runHHSearch(page playwright.Page, query string, loggedIn bool, autoApply bool, debug bool) ([]Job, error) {
+func runHHSearch(page playwright.Page, query string, loggedIn bool, autoApply bool, debug bool, areaID int) ([]Job, error) {
 	log.Printf("Opening hh.ru and searching for %q\n", query)
-	searchURL := buildHHSearchURL(query)
+	searchURL := buildHHSearchURL(query, areaID)
 	log.Printf("navigating to search url: %s", searchURL)
 
 	if err := navigateWithRetry(page, searchURL, 60_000); err != nil {

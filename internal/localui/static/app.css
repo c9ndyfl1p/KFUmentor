@@ -152,7 +152,7 @@ h1 { margin: 0; font-size: clamp(29px, 3.4vw, 40px); line-height: 1.13; letter-s
 .field-label { display: block; margin: 16px 0 6px; color: #34485a; font-size: 13px; font-weight: 650; }
 .card-heading + form .field-label:first-child { margin-top: 0; }
 
-input:not([type="checkbox"]), textarea {
+input:not([type="checkbox"]), textarea, select {
   width: 100%;
   padding: 10px 12px;
   color: var(--ink);
@@ -163,10 +163,10 @@ input:not([type="checkbox"]), textarea {
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
-input:not([type="checkbox"]) { min-height: 43px; }
+input:not([type="checkbox"]), select { min-height: 43px; }
 textarea { min-height: 82px; resize: vertical; }
 textarea::placeholder, input::placeholder { color: #98a5b1; }
-input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(20 104 160 / 13%); }
+input:focus, textarea:focus, select:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(20 104 160 / 13%); }
 
 .task-options { margin-top: 17px; border-top: 1px solid var(--line); }
 .toggle-row {
