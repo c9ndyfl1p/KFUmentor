@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f8fb">
+  <title>AI Job Agent · Локальная панель</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AI Job Agent — главная">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M5 18.5 12 4l7 14.5M8 13h8M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span>AI Job Agent</span>
+    </a>
+    <span class="local-badge"><span class="local-dot"></span>Работает на этом компьютере</span>
+  </header>
+
+  <main class="page-shell">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">ЛОКАЛЬНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ</p>
+        <h1>Поиск работы<br class="mobile-break"> без рутины</h1>
+        <p class="intro-copy">Задайте направление поиска. Агент найдёт вакансии и оценит их по вашему профилю.</p>
+      </div>
+      <div id="status-chip" class="status-chip" aria-live="polite">
+        <span class="status-dot"></span><span id="status-text">Подключаюсь…</span>
+      </div>
+    </section>
+
+    <div class="workspace">
+      <div class="primary-column">
+        <section class="card search-card" aria-labelledby="search-title">
+          <div class="card-heading">
+            <div class="step-icon" aria-hidden="true">1</div>
+            <div>
+              <h2 id="search-title">Что ищем?</h2>
+              <p>Опишите должность, город или условия</p>
+            </div>
+          </div>
+          <form id="run-form">
+            <label class="field-label" for="task">Задача для агента</label>
+            <textarea id="task" name="task" rows="3" maxlength="2000" placeholder="Например: найди удалённые вакансии Python-разработчика уровня middle" required></textarea>
+            <div class="task-options">
+              <label class="toggle-row">
+                <span class="toggle-copy"><strong>Открыть окно браузера</strong><small>Нужно для первого входа на hh.ru или ручного контроля</small></span>
+                <input type="checkbox" id="visible-browser">
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+              <label class="toggle-row apply-toggle">
+                <span class="toggle-copy"><strong>Отправлять отклики</strong><small>Агент отправит отклик только при совпадении от 7/10</small></span>
+                <input type="checkbox" id="auto-apply">
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+            </div>
+            <div id="apply-note" class="apply-note" hidden>Отклики отправляются от вашего аккаунта hh.ru. Проверьте профиль и убедитесь, что вы вошли в браузере.</div>
+            <div class="form-footer">
+              <span class="privacy-hint"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4 5v4.2c0 4 2.5 6.8 6 8.3 3.5-1.5 6-4.3 6-8.3V5l-6-2.5Zm0 4v4m0 2.8h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Поиск выполняется на вашем компьютере</span>
+              <button class="button button-primary" id="run-button" type="submit">
+                <span>Начать поиск</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card activity-card" aria-labelledby="activity-title">
+          <div class="card-heading activity-heading">
+            <div class="step-icon step-icon-muted" aria-hidden="true">2</div>
+            <div class="activity-title-wrap">
+              <h2 id="activity-title">Ход поиска</h2>
+              <p id="activity-caption">Здесь появится статус и результат последнего запуска</p>
+            </div>
+            <button type="button" class="text-button" id="clear-log">Очистить</button>
+          </div>
+          <pre id="output" class="output" aria-live="polite">Агент готов. Задайте задачу, чтобы начать поиск.</pre>
+        </section>
+      </div>
+
+      <aside class="card profile-card" aria-labelledby="profile-title">
+        <div class="card-heading">
+          <div class="step-icon" aria-hidden="true">3</div>
+          <div>
+            <h2 id="profile-title">Ваш профиль</h2>
+            <p>Данные сохраняются только локально</p>
+          </div>
+        </div>
+        <form id="profile-form">
+          <label class="field-label" for="name">Имя</label>
+          <input id="name" name="name" autocomplete="name" maxlength="200" placeholder="Как к вам обращаться">
+
+          <label class="field-label" for="title">Желаемая должность</label>
+          <input id="title" name="title" maxlength="200" placeholder="Например: Python-разработчик">
+
+          <label class="field-label" for="summary">Коротко о вас</label>
+          <textarea id="summary" name="summary" rows="3" maxlength="5000" placeholder="Ваш опыт и сильные стороны"></textarea>
+
+          <label class="field-label" for="skills">Навыки <span class="label-hint">через запятую</span></label>
+          <input id="skills" name="skills" placeholder="Python, SQL, Docker">
+
+          <label class="field-label" for="experience">Опыт работы <span class="label-hint">по одному месту в строке</span></label>
+          <textarea id="experience" name="experience" rows="4" maxlength="12000" placeholder="Backend-разработчик · Компания · 2022–2025"></textarea>
+
+          <div class="profile-footer">
+            <span id="profile-message" class="save-message" aria-live="polite"></span>
+            <button class="button button-secondary" type="submit" id="save-profile">Сохранить профиль</button>
+          </div>
+        </form>
+        <div class="profile-footnote"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4 5v4.2c0 4 2.5 6.8 6 8.3 3.5-1.5 6-4.3 6-8.3V5l-6-2.5Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Профиль не отправляется в облако. Он нужен агенту для оценки вакансий и писем.</div>
+      </aside>
+    </div>
+    <footer class="page-footer">AI Job Agent · hh.ru · Локальная версия</footer>
+  </main>
+</body>
+</html>

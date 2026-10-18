@@ -8,6 +8,7 @@ import (
     "path/filepath"
 
     "github.com/mihnpro/Ai_agent_2/internal/browser"
+	"github.com/mihnpro/Ai_agent_2/internal/localui"
     "github.com/mihnpro/Ai_agent_2/internal/types"
     "gopkg.in/yaml.v3"
 )
@@ -49,6 +50,8 @@ func main() {
     var modelName string
     var interactive bool
     var resumePath string
+	var web bool
+	var webAddr string
 
     flag.StringVar(&task, "task", "", "Task for the agent")
     flag.BoolVar(&headless, "headless", true, "Run browser in headless mode")
@@ -59,6 +62,8 @@ func main() {
     flag.StringVar(&modelName, "model", "qwen2.5:7b", "Model name for Ollama")
     flag.BoolVar(&interactive, "interactive", false, "Interactive mode")
     flag.StringVar(&resumePath, "resume", "data/resume.json", "Path to candidate profile JSON")
+	flag.BoolVar(&web, "web", false, "Start the local web interface")
+	flag.StringVar(&webAddr, "web-addr", "127.0.0.1:8787", "Local web interface address")
     flag.Parse()
 
     cfg, err := loadConfig()
@@ -88,6 +93,12 @@ func main() {
         runInteractiveMode(cfg)
         return
     }
+	if web {
+		if err := localui.Start(cfg, webAddr); err != nil {
+			log.Fatalf("Local web interface failed: %v", err)
+		}
+		return
+	}
 
     if task == "" {
         if len(flag.Args()) > 0 {
