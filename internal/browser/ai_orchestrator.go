@@ -361,6 +361,12 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 		"textarea",
 		"[contenteditable='true']",
 	}
+	submitBtnSelectors := []string{
+		"button:has-text('Отправить отклик')",
+		"button:has-text('Отправить')",
+		"[data-qa='vacancy-response-submit-popup']",
+		"[data-qa='vacancy-response-submit']",
+	}
 
 	letterFilled := false
 	for _, selector := range messageFieldSelectors {
@@ -376,14 +382,42 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 		}
 	}
 	if !letterFilled {
-		return "", fmt.Errorf("сопроводительное подготовлено, но hh.ru не показал поле для него; отклик не отправлен")
-	}
+		// HH can accept an application first and offer a separate
+		// "Добавить сопроводительное" action on the resulting response page.
+		// Support that flow instead of silently treating a bare response as a
+		// completed application with a letter.
+		log.Println("ℹ️ Поля письма в форме отклика нет; отправляю отклик и ищу «Добавить сопроводительное»")
+		if err := clickVisible(page, submitBtnSelectors); err != nil {
+			return "", fmt.Errorf("поле сопроводительного не найдено, не удалось отправить отклик: %w", err)
+		}
+		if err := waitForAnyVisible(page, []string{
+			"[data-qa='vacancy-response-popup-success']",
+			"[data-qa='vacancy-response-success']",
+			"button:has-text('Вы откликнулись')",
+			"text=Отклик отправлен",
+		}, 8*time.Second); err != nil {
+			return "", fmt.Errorf("hh.ru не подтвердил отклик без письма; проверьте «Мои отклики» перед повтором: %w", err)
+		}
 
-	submitBtnSelectors := []string{
-		"button:has-text('Отправить отклик')",
-		"button:has-text('Отправить')",
-		"[data-qa='vacancy-response-submit-popup']",
-		"[data-qa='vacancy-response-submit']",
+		if err := clickVisible(page, []string{
+			"button:has-text('Добавить сопроводительное')",
+			"text=Добавить сопроводительное",
+		}); err != nil {
+			return "", fmt.Errorf("отклик отправлен без письма; кнопка «Добавить сопроводительное» не найдена: %w", err)
+		}
+		time.Sleep(time.Second)
+		if err := fillVisibleMessage(page, coverLetter); err != nil {
+			return "", fmt.Errorf("отклик отправлен без письма; после «Добавить сопроводительное» поле не найдено: %w", err)
+		}
+		if err := clickVisible(page, []string{
+			"button:has-text('Отправить')",
+			"button:has-text('Добавить')",
+			"button:has-text('Сохранить')",
+			"[data-qa='vacancy-response-submit-popup']",
+		}); err != nil {
+			return "", fmt.Errorf("отклик отправлен, письмо заполнено, но не удалось отправить сопроводительное: %w", err)
+		}
+		return fmt.Sprintf("Отклик и сопроводительное отправлены для '%s' в '%s'", title, company), nil
 	}
 
 	for _, selector := range submitBtnSelectors {
@@ -421,6 +455,61 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 	}
 
 	return "", fmt.Errorf("не найдена видимая кнопка отправки; отклик не отправлен")
+}
+
+func clickVisible(page playwright.Page, selectors []string) error {
+	for _, selector := range selectors {
+		locator := page.Locator(selector)
+		count, _ := locator.Count()
+		for i := 0; i < count; i++ {
+			button := locator.Nth(i)
+			visible, _ := button.IsVisible()
+			if visible {
+				if err := button.Click(); err == nil {
+					return nil
+				}
+			}
+		}
+	}
+	return fmt.Errorf("не найдена видимая кнопка среди селекторов: %s", strings.Join(selectors, ", "))
+}
+
+func fillVisibleMessage(page playwright.Page, message string) error {
+	selectors := []string{
+		"textarea[data-qa='vacancy-response-popup-form-letter-input']",
+		"textarea[name='message']",
+		"textarea",
+		"[contenteditable='true']",
+	}
+	for _, selector := range selectors {
+		locator := page.Locator(selector)
+		count, _ := locator.Count()
+		for i := 0; i < count; i++ {
+			field := locator.Nth(i)
+			visible, _ := field.IsVisible()
+			if visible && field.Fill(message) == nil {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("не найдено видимое поле письма")
+}
+
+func waitForAnyVisible(page playwright.Page, selectors []string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		for _, selector := range selectors {
+			locator := page.Locator(selector)
+			count, _ := locator.Count()
+			for i := 0; i < count; i++ {
+				if visible, _ := locator.Nth(i).IsVisible(); visible {
+					return nil
+				}
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return fmt.Errorf("элемент подтверждения не появился")
 }
 
 func (a *AIOrchestrator) printJobAnalysis(job types.Job, evaluation *JobEvaluationResult) {

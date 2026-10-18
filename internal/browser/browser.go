@@ -539,20 +539,10 @@ func applyToVacancy(page playwright.Page, message string) (string, error) {
 
 	time.Sleep(1500 * time.Millisecond)
 
-	msgLoc := page.Locator("textarea[name='message'], textarea, input[name='message']")
-	if c, _ := msgLoc.Count(); c > 0 {
-		for i := 0; i < c; i++ {
-			el := msgLoc.Nth(i)
-			if vis, _ := el.IsVisible(); vis {
-				if err := el.Fill(message); err != nil {
-					log.Printf("applyToVacancy: message fill failed: %v", err)
-				} else {
-					log.Printf("applyToVacancy: filled message field")
-				}
-				break
-			}
-		}
+	if err := fillVisibleMessage(page, message); err != nil {
+		return "", fmt.Errorf("сопроводительное не заполнено; отклик не отправлен: %w", err)
 	}
+	log.Printf("applyToVacancy: filled visible message field")
 
 	submitSelectors := []string{
 		"button:has-text(\"Отправить\")",
