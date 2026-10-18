@@ -45,18 +45,10 @@
             <label class="field-label" for="task">Задача для агента</label>
             <textarea id="task" name="task" rows="3" maxlength="2000" placeholder="Например: найди удалённые вакансии Python-разработчика уровня middle" required></textarea>
             <label class="field-label" for="city">Город</label>
-            <select id="city" name="city">
-              <option value="113">Любой город России</option>
-              <option value="1">Москва</option>
-              <option value="2">Санкт-Петербург</option>
-              <option value="88">Казань</option>
-              <option value="3">Екатеринбург</option>
-              <option value="4">Новосибирск</option>
-              <option value="66">Нижний Новгород</option>
-              <option value="78">Самара</option>
-              <option value="53">Краснодар</option>
-              <option value="22">Владивосток</option>
-            </select>
+            <input id="city" name="city" type="text" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="city-suggestions" aria-expanded="false" placeholder="Начните вводить город или регион">
+            <input id="area-id" name="areaId" type="hidden" value="">
+            <div id="city-suggestions" class="city-suggestions" role="listbox" aria-label="Города и регионы hh.ru" hidden></div>
+            <small id="city-hint" class="city-hint" aria-live="polite">Оставьте поле пустым, чтобы искать по всей России.</small>
             <div class="task-options">
               <label class="toggle-row">
                 <span class="toggle-copy"><strong>Открыть окно браузера</strong><small>Нужно для первого входа на hh.ru или ручного контроля</small></span>

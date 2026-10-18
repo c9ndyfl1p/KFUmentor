@@ -8,8 +8,15 @@ const output = $("#output");
 const statusChip = $("#status-chip");
 const statusText = $("#status-text");
 const applyNote = $("#apply-note");
+const cityField = $("#city");
+const areaIDField = $("#area-id");
+const citySuggestions = $("#city-suggestions");
+const cityHint = $("#city-hint");
 
 let lastOutput = "";
+let citySearchTimer;
+let citySearchController;
+let activeCityOption = -1;
 
 async function request(path, options = {}) {
   const headers = options.body instanceof FormData
@@ -101,6 +108,111 @@ function setMessage(element, message, isError = false) {
   element.classList.toggle("is-error", isError);
 }
 
+function hideCitySuggestions() {
+  citySuggestions.hidden = true;
+  cityField.setAttribute("aria-expanded", "false");
+  cityField.removeAttribute("aria-activedescendant");
+  activeCityOption = -1;
+}
+
+function chooseCity(item) {
+  areaIDField.value = String(item.id);
+  cityField.value = item.path ? `${item.name} · ${item.path}` : item.name;
+  cityHint.textContent = `Выбран регион hh.ru: ${cityField.value}`;
+  cityHint.classList.remove("is-error");
+  hideCitySuggestions();
+}
+
+function setActiveCityOption(index) {
+  const options = [...citySuggestions.querySelectorAll("[role='option']")];
+  if (!options.length) return;
+  activeCityOption = (index + options.length) % options.length;
+  options.forEach((option, optionIndex) => {
+    const active = optionIndex === activeCityOption;
+    option.classList.toggle("is-active", active);
+    option.setAttribute("aria-selected", String(active));
+  });
+  const activeOption = options[activeCityOption];
+  cityField.setAttribute("aria-activedescendant", activeOption.id);
+  activeOption.scrollIntoView({ block: "nearest" });
+}
+
+function showCityOptions(items) {
+  citySuggestions.replaceChildren();
+  if (!items.length) {
+    hideCitySuggestions();
+    cityHint.textContent = "Подходящих городов не нашлось. Попробуйте другое написание.";
+    return;
+  }
+  items.forEach((item, index) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.id = `city-option-${index}`;
+    option.className = "city-suggestion";
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", "false");
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    option.append(name);
+    if (item.path) {
+      const path = document.createElement("small");
+      path.textContent = item.path;
+      option.append(path);
+    }
+    option.addEventListener("mousedown", (event) => event.preventDefault());
+    option.addEventListener("click", () => chooseCity(item));
+    citySuggestions.append(option);
+  });
+  citySuggestions.hidden = false;
+  cityField.setAttribute("aria-expanded", "true");
+  cityHint.textContent = "Выберите один из регионов hh.ru.";
+}
+
+cityField.addEventListener("input", () => {
+  areaIDField.value = "";
+  cityHint.textContent = "Оставьте поле пустым, чтобы искать по всей России.";
+  cityHint.classList.remove("is-error");
+  hideCitySuggestions();
+  if (citySearchController) citySearchController.abort();
+  clearTimeout(citySearchTimer);
+
+  const query = cityField.value.trim();
+  if (query.length < 2) return;
+
+  citySearchTimer = setTimeout(async () => {
+    citySearchController = new AbortController();
+    cityHint.textContent = "Ищу город или регион…";
+    try {
+      const data = await request(`/api/areas?q=${encodeURIComponent(query)}`, { signal: citySearchController.signal });
+      showCityOptions(data.items || []);
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      cityHint.textContent = error.message;
+      cityHint.classList.add("is-error");
+    }
+  }, 300);
+});
+
+cityField.addEventListener("keydown", (event) => {
+  const options = citySuggestions.querySelectorAll("[role='option']");
+  if (event.key === "ArrowDown" && options.length) {
+    event.preventDefault();
+    setActiveCityOption(activeCityOption + 1);
+  } else if (event.key === "ArrowUp" && options.length) {
+    event.preventDefault();
+    setActiveCityOption(activeCityOption < 0 ? options.length - 1 : activeCityOption - 1);
+  } else if (event.key === "Enter" && activeCityOption >= 0 && options[activeCityOption]) {
+    event.preventDefault();
+    options[activeCityOption].click();
+  } else if (event.key === "Escape") {
+    hideCitySuggestions();
+  }
+});
+
+cityField.addEventListener("blur", () => {
+  setTimeout(hideCitySuggestions, 120);
+});
+
 function fillProfile(profile) {
   $("#name").value = profile.name || "";
   $("#title").value = profile.title || "";
@@ -187,6 +299,12 @@ $("#auto-apply").addEventListener("change", (event) => {
 
 taskForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (cityField.value.trim() && !areaIDField.value) {
+    cityHint.textContent = "Выберите город из подсказок или очистите поле.";
+    cityHint.classList.add("is-error");
+    cityField.focus();
+    return;
+  }
   runButton.disabled = true;
   const label = runButton.querySelector("span");
   label.textContent = "Запускаю…";
@@ -195,7 +313,7 @@ taskForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify({
         task: $("#task").value,
-        areaId: Number($("#city").value),
+        areaId: Number(areaIDField.value || 0),
         autoApply: $("#auto-apply").checked,
         visible: $("#visible-browser").checked,
       }),

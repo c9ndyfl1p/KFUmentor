@@ -152,7 +152,7 @@ h1 { margin: 0; font-size: clamp(29px, 3.4vw, 40px); line-height: 1.13; letter-s
 .field-label { display: block; margin: 16px 0 6px; color: #34485a; font-size: 13px; font-weight: 650; }
 .card-heading + form .field-label:first-child { margin-top: 0; }
 
-input:not([type="checkbox"]), textarea, select {
+input:not([type="checkbox"]):not([type="hidden"]), textarea {
   width: 100%;
   padding: 10px 12px;
   color: var(--ink);
@@ -163,10 +163,19 @@ input:not([type="checkbox"]), textarea, select {
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
-input:not([type="checkbox"]), select { min-height: 43px; }
+input:not([type="checkbox"]):not([type="hidden"]) { min-height: 43px; }
 textarea { min-height: 82px; resize: vertical; }
 textarea::placeholder, input::placeholder { color: #98a5b1; }
-input:focus, textarea:focus, select:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(20 104 160 / 13%); }
+input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(20 104 160 / 13%); }
+
+.city-hint { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
+.city-hint.is-error { color: #a43333; }
+.city-suggestions { position: relative; z-index: 2; max-height: 260px; overflow-y: auto; margin-top: 5px; padding: 4px; background: var(--paper); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: var(--shadow); }
+.city-suggestions[hidden] { display: none; }
+.city-suggestion { display: block; width: 100%; padding: 9px 10px; text-align: left; color: var(--ink); background: transparent; border: 0; border-radius: 5px; }
+.city-suggestion:hover, .city-suggestion.is-active { background: var(--blue-soft); }
+.city-suggestion strong { display: block; font-size: 14px; font-weight: 600; }
+.city-suggestion small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
 
 .task-options { margin-top: 17px; border-top: 1px solid var(--line); }
 .toggle-row {

@@ -10,9 +10,11 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -87,6 +89,7 @@ func Start(cfg types.Config, address string) error {
 	static, _ := fs.Sub(staticFiles, "static")
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
 	mux.HandleFunc("GET /api/profile", app.handleGetProfile)
+	mux.HandleFunc("GET /api/areas", app.handleAreaSuggestions)
 	mux.HandleFunc("PUT /api/profile", app.handleSaveProfile)
 	mux.HandleFunc("POST /api/resume", app.handleUploadResume)
 	mux.HandleFunc("POST /api/hr/reply", app.handleDraftHRReply)
@@ -196,6 +199,75 @@ func (s *server) handleGetProfile(w http.ResponseWriter, r *http.Request) {
 		Skills:     profile.Skills,
 		Experience: formatExperience(profile.Experience),
 	})
+}
+
+type hhAreaSuggestion struct {
+	ID     string            `json:"id"`
+	Text   string            `json:"text"`
+	Parent *hhAreaSuggestion `json:"parent,omitempty"`
+}
+
+type hhAreaSuggestionResponse struct {
+	Items []hhAreaSuggestion `json:"items"`
+}
+
+type areaSuggestion struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+func (s *server) handleAreaSuggestions(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len([]rune(query)) < 2 || len([]rune(query)) > 80 {
+		writeJSON(w, http.StatusOK, map[string][]areaSuggestion{"items": {}})
+		return
+	}
+
+	apiURL := "https://api.hh.ru/suggests/area_leaves?" + url.Values{
+		"text":   []string{query},
+		"locale": []string{"RU"},
+		"host":   []string{"hh.ru"},
+	}.Encode()
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, apiURL, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось подготовить запрос городов")
+		return
+	}
+	req.Header.Set("HH-User-Agent", "AIJobAgent/1.0 (https://github.com/c9ndyfl1p/KFUmentor)")
+
+	client := &http.Client{Timeout: 6 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "Не удалось загрузить список городов hh.ru")
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadGateway, "Справочник городов hh.ru временно недоступен")
+		return
+	}
+
+	var data hhAreaSuggestionResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&data); err != nil {
+		writeError(w, http.StatusBadGateway, "Не удалось прочитать список городов hh.ru")
+		return
+	}
+	items := make([]areaSuggestion, 0, len(data.Items))
+	for _, item := range data.Items {
+		id, err := strconv.Atoi(item.ID)
+		if err != nil || id <= 0 || strings.TrimSpace(item.Text) == "" {
+			continue
+		}
+		var ancestors []string
+		for parent := item.Parent; parent != nil; parent = parent.Parent {
+			if name := strings.TrimSpace(parent.Text); name != "" {
+				ancestors = append(ancestors, name)
+			}
+		}
+		items = append(items, areaSuggestion{ID: id, Name: item.Text, Path: strings.Join(ancestors, " · ")})
+	}
+	writeJSON(w, http.StatusOK, map[string][]areaSuggestion{"items": items})
 }
 
 func (s *server) handleSaveProfile(w http.ResponseWriter, r *http.Request) {
@@ -332,8 +404,8 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Введите задачу до 2000 символов")
 		return
 	}
-	if input.AreaID != 0 && !isSupportedArea(input.AreaID) {
-		writeError(w, http.StatusBadRequest, "Выберите город из списка")
+	if input.AreaID < 0 || input.AreaID > 1_000_000 {
+		writeError(w, http.StatusBadRequest, "Указан недопустимый регион")
 		return
 	}
 	profile, err := s.readProfile()
@@ -371,15 +443,6 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "Задача запущена"})
 
-}
-
-func isSupportedArea(areaID int) bool {
-	switch areaID {
-	case 113, 1, 2, 3, 4, 66, 88, 78, 53, 22:
-		return true
-	default:
-		return false
-	}
 }
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
