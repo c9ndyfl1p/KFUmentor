@@ -242,8 +242,8 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 
 			applyResult, err := a.performJobApplication(job)
 			if err != nil {
-				log.Printf("❌ Ошибка отклика: %v", err)
-				results = append(results, fmt.Sprintf("❌ %s: ошибка отклика", job.Title))
+				log.Printf("❌ Отклик не подтверждён: %v", err)
+				results = append(results, fmt.Sprintf("❌ %s: %v", job.Title, err))
 				errorCount++
 				// A navigation/interaction error can mean the browser is no longer
 				// on the expected vacancy. Stop automatic submissions for this run.
@@ -363,33 +363,44 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 		"button:has-text('Отправить отклик')",
 		"button:has-text('Отправить')",
 		"[data-qa='vacancy-response-submit-popup']",
+		"[data-qa='vacancy-response-submit']",
 	}
 
 	for _, selector := range submitBtnSelectors {
 		submitBtn := page.Locator(selector)
 		if count, _ := submitBtn.Count(); count > 0 {
-			if err := submitBtn.First().Click(); err == nil {
-				log.Println("📤 Отправляю отклик...")
-				time.Sleep(3 * time.Second)
+			button := submitBtn.First()
+			if visible, _ := button.IsVisible(); !visible {
+				continue
+			}
+			if err := button.Click(); err != nil {
+				log.Printf("⚠️ Не удалось нажать %s: %v", selector, err)
+				continue
+			}
 
-				successSelectors := []string{
-					":has-text('отправлен')",
-					":has-text('успешно')",
-					"[data-qa='vacancy-response-popup-success']",
-				}
-
+			log.Println("📤 Нажата кнопка отправки; жду подтверждение hh.ru...")
+			successSelectors := []string{
+				"[data-qa='vacancy-response-popup-success']",
+				"[data-qa='vacancy-response-success']",
+				"button:has-text('Вы откликнулись')",
+				"text=Вы откликнулись",
+				"text=Отклик отправлен",
+				"text=Отклик успешно отправлен",
+			}
+			deadline := time.Now().Add(8 * time.Second)
+			for time.Now().Before(deadline) {
 				for _, successSel := range successSelectors {
 					if count, _ := page.Locator(successSel).Count(); count > 0 {
-						return fmt.Sprintf("Отклик успешно отправлен на '%s' в '%s'", title, company), nil
+						return fmt.Sprintf("Отклик подтверждён hh.ru для '%s' в '%s'", title, company), nil
 					}
 				}
-
-				return "Отклик отправлен (статус не подтвержден)", nil
+				time.Sleep(400 * time.Millisecond)
 			}
+			return "", fmt.Errorf("кнопка отправки нажата, но hh.ru не подтвердил результат; проверьте раздел «Мои отклики» перед повторным запуском")
 		}
 	}
 
-	return "Отклик не отправлен (не удалось найти кнопку отправки)", nil
+	return "", fmt.Errorf("не найдена видимая кнопка отправки; отклик не отправлен")
 }
 
 func (a *AIOrchestrator) printJobAnalysis(job types.Job, evaluation *JobEvaluationResult) {
