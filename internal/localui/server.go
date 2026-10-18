@@ -77,6 +77,7 @@ func Start(cfg types.Config, address string) error {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
 	mux.HandleFunc("GET /api/profile", app.handleGetProfile)
 	mux.HandleFunc("PUT /api/profile", app.handleSaveProfile)
+	mux.HandleFunc("POST /api/resume", app.handleUploadResume)
 	mux.HandleFunc("GET /api/state", app.handleState)
 	mux.HandleFunc("POST /api/run", app.handleRun)
 	mux.HandleFunc("POST /api/clear", app.handleClear)
@@ -180,6 +181,47 @@ func (s *server) handleSaveProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Профиль сохранён на этом компьютере"})
+}
+
+func (s *server) handleUploadResume(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
+	if err := r.ParseMultipartForm(2 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "Не удалось прочитать файл. Максимальный размер — 2 МБ")
+		return
+	}
+	file, header, err := r.FormFile("resume")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Выберите файл резюме")
+		return
+	}
+	defer file.Close()
+	if !strings.EqualFold(filepath.Ext(header.Filename), ".json") {
+		writeError(w, http.StatusBadRequest, "Пока поддерживается JSON-файл профиля")
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	if err != nil || len(data) > 1<<20 {
+		writeError(w, http.StatusBadRequest, "Файл не удалось прочитать или он больше 1 МБ")
+		return
+	}
+	var profile types.Resume
+	if err := json.Unmarshal(data, &profile); err != nil {
+		writeError(w, http.StatusBadRequest, "Файл должен быть корректным JSON-профилем резюме")
+		return
+	}
+	if strings.TrimSpace(profile.Name) == "" && strings.TrimSpace(profile.Title) == "" && len(profile.Skills) == 0 {
+		writeError(w, http.StatusBadRequest, "В резюме не найдены имя, должность или навыки")
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(localResumePath), 0700); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось создать папку профиля")
+		return
+	}
+	if err := os.WriteFile(localResumePath, data, 0600); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось сохранить профиль")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "Резюме прикреплено и сохранено локально"})
 }
 
 func (s *server) handleState(w http.ResponseWriter, r *http.Request) {

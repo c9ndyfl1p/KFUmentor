@@ -86,6 +86,7 @@
             <h2 id="profile-title">Ваш профиль</h2>
             <p>Данные сохраняются только локально</p>
           </div>
+          <button type="button" class="text-button resume-open" id="open-resume">Прикрепить резюме</button>
         </div>
         <form id="profile-form">
           <label class="field-label" for="name">Имя</label>
@@ -113,5 +114,31 @@
     </div>
     <footer class="page-footer">AI Job Agent · hh.ru · Локальная версия</footer>
   </main>
+
+  <dialog id="resume-dialog" class="resume-dialog" aria-labelledby="resume-title">
+    <form id="resume-upload-form" class="resume-dialog-content">
+      <div class="resume-dialog-heading">
+        <div class="resume-file-icon" aria-hidden="true">↥</div>
+        <button type="button" class="dialog-close" id="close-resume" aria-label="Закрыть окно">×</button>
+        <p class="eyebrow">ПРОФИЛЬ КАНДИДАТА</p>
+        <h2 id="resume-title">Прикрепить резюме</h2>
+        <p class="resume-description">Выберите файл, чтобы заполнить профиль данными из резюме.</p>
+      </div>
+      <label class="resume-dropzone" id="resume-dropzone" for="resume-file">
+        <span class="upload-cloud" aria-hidden="true">↑</span>
+        <strong>Перетащите файл сюда</strong>
+        <span>или нажмите, чтобы выбрать на компьютере</span>
+        <span class="resume-format">Поддерживается JSON · до 1 МБ</span>
+        <input id="resume-file" name="resume" type="file" accept=".json,application/json" required>
+      </label>
+      <p id="resume-file-name" class="resume-file-name" aria-live="polite">Файл не выбран</p>
+      <p class="resume-local-note">Файл обрабатывается локально и не отправляется в облако.</p>
+      <p id="resume-upload-message" class="resume-upload-message" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button type="button" class="button button-secondary" id="cancel-resume">Отмена</button>
+        <button type="submit" class="button button-primary" id="upload-resume" disabled>Загрузить резюме</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

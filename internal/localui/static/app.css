@@ -243,6 +243,7 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
 
 .profile-card { padding-bottom: 20px; }
 .profile-card .card-heading { margin-bottom: 21px; }
+.resume-open { margin-left: auto; flex: 0 0 auto; color: var(--blue); font-weight: 650; }
 .profile-card .field-label { margin-top: 14px; }
 .profile-card textarea { min-height: unset; }
 .label-hint { color: var(--muted-light); font-size: 11px; font-weight: 400; }
@@ -253,6 +254,39 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
 .profile-footnote { display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; padding-top: 15px; color: var(--muted); border-top: 1px solid var(--line); font-size: 11px; line-height: 1.5; }
 .profile-footnote svg { width: 16px; height: 16px; flex: 0 0 auto; color: #6e8799; }
 .page-footer { padding: 23px 0 0; color: #8694a0; text-align: center; font-size: 11px; }
+
+.resume-dialog {
+  width: min(100% - 32px, 490px);
+  max-width: 490px;
+  padding: 0;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgb(15 35 52 / 24%);
+}
+.resume-dialog::backdrop { background: rgb(15 31 45 / 48%); backdrop-filter: blur(2px); }
+.resume-dialog-content { padding: 27px; }
+.resume-dialog-heading { position: relative; padding-top: 51px; }
+.resume-file-icon { position: absolute; top: 0; left: 0; display: grid; width: 40px; height: 40px; place-items: center; color: var(--blue); background: var(--blue-soft); border-radius: 11px; font-size: 24px; font-weight: 600; }
+.dialog-close { position: absolute; top: 0; right: 0; width: 35px; height: 35px; color: var(--muted); background: #f4f7f9; border: 0; border-radius: 50%; font-size: 23px; line-height: 1; }
+.dialog-close:hover { color: var(--ink); background: #eaf0f4; }
+.dialog-close:focus-visible, .resume-dropzone:focus-within { outline: 3px solid rgb(20 104 160 / 24%); outline-offset: 2px; }
+.resume-dialog .eyebrow { margin-bottom: 5px; font-size: 10px; }
+.resume-dialog h2 { margin: 0; font-size: 23px; letter-spacing: -.5px; }
+.resume-description { margin: 7px 0 19px; color: var(--muted); font-size: 13px; }
+.resume-dropzone { display: grid; min-height: 180px; align-content: center; justify-items: center; gap: 5px; padding: 18px; color: var(--ink); background: #f8fbfd; border: 1px dashed #a9bfce; border-radius: 10px; text-align: center; cursor: pointer; transition: background 150ms ease, border-color 150ms ease; }
+.resume-dropzone:hover, .resume-dropzone.is-dragging { background: #f0f8fd; border-color: var(--blue); }
+.resume-dropzone strong { font-size: 14px; }
+.resume-dropzone > span:not(.upload-cloud) { color: var(--muted); font-size: 12px; }
+.resume-dropzone .resume-format { margin-top: 6px; color: #728696; font-size: 11px; }
+.upload-cloud { display: grid; width: 36px; height: 36px; margin-bottom: 4px; place-items: center; color: var(--blue); background: var(--blue-soft); border-radius: 50%; font-size: 22px; }
+.resume-dropzone input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.resume-file-name { min-height: 19px; margin: 10px 0 0; color: var(--blue-dark); font-size: 12px; overflow-wrap: anywhere; }
+.resume-local-note { margin: 8px 0 0; color: var(--muted); font-size: 11px; }
+.resume-upload-message { min-height: 18px; margin: 8px 0 0; color: var(--green); font-size: 12px; }
+.resume-upload-message.is-error { color: #a43333; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 15px; padding-top: 16px; border-top: 1px solid var(--line); }
 
 @keyframes pulse { 50% { box-shadow: 0 0 0 5px rgb(35 135 194 / 12%); } }
 
@@ -290,11 +324,15 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
   .privacy-hint { order: 2; }
   .button-primary { width: 100%; }
   .profile-card form { display: block; }
+  .resume-open { padding: 0 2px; font-size: 11px; }
   .profile-footer { display: block; }
   .profile-footer .button { margin-top: 7px; }
   .activity-heading { align-items: flex-start; }
   .text-button { margin-left: auto; }
   .output { min-height: 160px; font-size: 11px; }
+  .resume-dialog-content { padding: 21px; }
+  .resume-dialog h2 { font-size: 21px; }
+  .dialog-actions .button { flex: 1; padding: 0 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

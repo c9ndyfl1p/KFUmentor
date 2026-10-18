@@ -10,14 +10,89 @@ const applyNote = $("#apply-note");
 let lastOutput = "";
 
 async function request(path, options = {}) {
+  const headers = options.body instanceof FormData
+    ? { ...(options.headers || {}) }
+    : { "Content-Type": "application/json", ...(options.headers || {}) };
   const response = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Ошибка ${response.status}`);
   return data;
 }
+
+const resumeDialog = $("#resume-dialog");
+const resumeFile = $("#resume-file");
+const resumeDropzone = $("#resume-dropzone");
+const uploadResumeButton = $("#upload-resume");
+const resumeFileName = $("#resume-file-name");
+const resumeUploadMessage = $("#resume-upload-message");
+
+function setResumeFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".json")) {
+    resumeFile.value = "";
+    uploadResumeButton.disabled = true;
+    resumeFileName.textContent = file.name;
+    setMessage(resumeUploadMessage, "Выберите файл JSON.", true);
+    return;
+  }
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  resumeFile.files = transfer.files;
+  resumeFileName.textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} КБ`;
+  uploadResumeButton.disabled = false;
+  setMessage(resumeUploadMessage, "");
+}
+
+function closeResumeDialog() {
+  resumeDialog.close();
+}
+
+$("#open-resume").addEventListener("click", () => {
+  resumeFile.value = "";
+  resumeFileName.textContent = "Файл не выбран";
+  uploadResumeButton.disabled = true;
+  setMessage(resumeUploadMessage, "");
+  resumeDialog.showModal();
+});
+$("#close-resume").addEventListener("click", closeResumeDialog);
+$("#cancel-resume").addEventListener("click", closeResumeDialog);
+resumeFile.addEventListener("change", () => setResumeFile(resumeFile.files[0]));
+resumeDropzone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  resumeDropzone.classList.add("is-dragging");
+});
+resumeDropzone.addEventListener("dragleave", () => resumeDropzone.classList.remove("is-dragging"));
+resumeDropzone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  resumeDropzone.classList.remove("is-dragging");
+  setResumeFile(event.dataTransfer.files[0]);
+});
+resumeDialog.addEventListener("click", (event) => {
+  if (event.target === resumeDialog) closeResumeDialog();
+});
+$("#resume-upload-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!resumeFile.files[0]) return;
+  uploadResumeButton.disabled = true;
+  uploadResumeButton.textContent = "Загружаю…";
+  setMessage(resumeUploadMessage, "Проверяю и сохраняю профиль…");
+  try {
+    const formData = new FormData();
+    formData.append("resume", resumeFile.files[0]);
+    const result = await request("/api/resume", { method: "POST", body: formData });
+    fillProfile(await request("/api/profile"));
+    setMessage($("#profile-message"), result.status);
+    resumeDialog.close();
+  } catch (error) {
+    setMessage(resumeUploadMessage, error.message, true);
+    uploadResumeButton.disabled = false;
+  } finally {
+    uploadResumeButton.textContent = "Загрузить резюме";
+  }
+});
 
 function setMessage(element, message, isError = false) {
   element.textContent = message;
