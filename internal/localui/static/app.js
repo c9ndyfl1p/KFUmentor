@@ -4,7 +4,8 @@ const profileForm = $("#profile-form");
 const runButton = $("#run-button");
 const stopButton = $("#stop-button");
 const loginButton = $("#login-button");
-const output = $("#output");
+const vacancyCards = $("#vacancy-cards");
+const activityMessage = $("#activity-message");
 const statusChip = $("#status-chip");
 const statusText = $("#status-text");
 const applyNote = $("#apply-note");
@@ -13,7 +14,6 @@ const areaIDField = $("#area-id");
 const citySuggestions = $("#city-suggestions");
 const cityHint = $("#city-hint");
 
-let lastOutput = "";
 let citySearchTimer;
 let citySearchController;
 let activeCityOption = -1;
@@ -34,6 +34,88 @@ async function request(path, options = {}) {
 function setMessage(element, message, isError = false) {
   element.textContent = message;
   element.classList.toggle("is-error", isError);
+}
+
+function showActivityMessage(message = "", isError = false) {
+  activityMessage.textContent = message;
+  activityMessage.hidden = !message;
+  activityMessage.classList.toggle("is-error", isError);
+  activityMessage.setAttribute("role", isError ? "alert" : "status");
+}
+
+function renderVacancyCards(cards, running) {
+  vacancyCards.replaceChildren();
+  if (!cards.length) {
+    const empty = document.createElement("p");
+    empty.className = "activity-empty";
+    empty.textContent = running
+      ? "Ищу вакансии. Карточки появятся, когда агент начнёт их оценивать."
+      : "Здесь появятся карточки найденных вакансий.";
+    vacancyCards.append(empty);
+    return;
+  }
+
+  for (const item of cards) {
+    const card = document.createElement("article");
+    card.className = "vacancy-progress-card";
+    card.dataset.status = item.status || "running";
+
+    const heading = document.createElement("div");
+    heading.className = "vacancy-progress-heading";
+    const position = document.createElement("span");
+    position.className = "vacancy-position";
+    position.textContent = `Вакансия ${item.index}${item.total ? ` из ${item.total}` : ""}`;
+    const state = document.createElement("span");
+    state.className = "vacancy-state";
+    state.textContent = ({ running: "В работе", applying: "Отклик", success: "Готово", skipped: "Пропущена", stopped: "Остановлено", error: "Ошибка" })[item.status] || "В работе";
+    heading.append(position, state);
+
+    const title = document.createElement("h3");
+    title.className = "vacancy-progress-title";
+    if (item.url) {
+      const link = document.createElement("a");
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = item.title || "Вакансия";
+      link.setAttribute("aria-label", `Открыть вакансию: ${item.title || "Вакансия"}`);
+      title.append(link);
+    } else {
+      title.textContent = item.title || "Вакансия";
+    }
+
+    const progress = document.createElement("p");
+    progress.className = "vacancy-progress-stage";
+    progress.textContent = item.stage || "Ожидает обработки";
+
+    card.append(heading, title, progress);
+    if (item.score) {
+      const score = document.createElement("span");
+      score.className = "vacancy-score";
+      score.textContent = `Совпадение ${item.score}/10`;
+      card.append(score);
+    }
+    if (item.result) {
+      const result = document.createElement("p");
+      result.className = "vacancy-result";
+      result.textContent = item.result;
+      card.append(result);
+    }
+    if (item.summary) {
+      const summary = document.createElement("p");
+      summary.className = "vacancy-result";
+      summary.textContent = item.summary;
+      card.append(summary);
+    }
+    if (item.details) {
+      const details = document.createElement("p");
+      details.className = "vacancy-details";
+      details.textContent = item.details;
+      details.setAttribute("role", "alert");
+      card.append(details);
+    }
+    vacancyCards.append(card);
+  }
 }
 
 function hideCitySuggestions() {
@@ -250,15 +332,14 @@ taskForm.addEventListener("submit", async (event) => {
         areaId: Number(areaIDField.value || 0),
         autoApply: $("#auto-apply").checked,
         applicationTarget: $("#auto-apply").checked ? Number($("#application-target").value) : 0,
+        vacancyLimit: Number($("#vacancy-limit").value),
         visible: $("#visible-browser").checked,
       }),
     });
-    output.textContent = "Задача передана агенту. Жду результат…";
-    lastOutput = output.textContent;
+    showActivityMessage("");
     await refreshState();
   } catch (error) {
-    output.textContent = error.message;
-    lastOutput = output.textContent;
+    showActivityMessage(error.message, true);
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
     runButton.disabled = state.running;
@@ -272,12 +353,10 @@ loginButton.addEventListener("click", async () => {
   loginButton.textContent = "Открываю hh.ru…";
   try {
     await request("/api/login", { method: "POST" });
-    output.textContent = "Открыл hh.ru для ручного входа. Поиск не запустится автоматически. Закройте окно hh.ru после авторизации.";
-    lastOutput = output.textContent;
+    showActivityMessage("Открыл hh.ru для ручного входа. Поиск не запустится автоматически. Закройте окно hh.ru после авторизации.");
     await refreshState();
   } catch (error) {
-    output.textContent = error.message;
-    lastOutput = error.message;
+    showActivityMessage(error.message, true);
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
     loginButton.disabled = state.running;
@@ -292,13 +371,12 @@ stopButton.addEventListener("click", async () => {
     await request("/api/cancel", { method: "POST" });
     await refreshState();
   } catch (error) {
-    output.textContent = error.message;
-    lastOutput = error.message;
+    showActivityMessage(error.message, true);
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
     stopButton.disabled = !state.running || /останавливаю/i.test(state.status || "");
-  stopButton.textContent = /останавливаю/i.test(state.status || "") ? "Останавливаю…" : "Остановить";
-  loginButton.disabled = Boolean(state.running);
+    stopButton.textContent = /останавливаю/i.test(state.status || "") ? "Останавливаю…" : "Остановить";
+    loginButton.disabled = Boolean(state.running);
   }
 });
 
@@ -314,14 +392,7 @@ async function refreshState() {
   stopButton.disabled = /останавливаю/i.test(state.status || "");
   stopButton.textContent = stopButton.disabled ? "Останавливаю…" : "Остановить";
 
-  if (state.output && state.output !== lastOutput) {
-    output.textContent = state.output;
-    output.scrollTop = output.scrollHeight;
-    lastOutput = state.output;
-  } else if (!state.output && lastOutput && !state.running) {
-    output.textContent = "Журнал очищен. Запустите новый поиск, чтобы увидеть результат.";
-    lastOutput = "";
-  }
+  renderVacancyCards(state.cards || [], Boolean(state.running));
 
   $("#activity-caption").textContent = state.startedAt
     ? `Последний запуск: ${new Date(state.startedAt).toLocaleString("ru-RU")}`
@@ -330,14 +401,14 @@ async function refreshState() {
 
 $("#clear-log").addEventListener("click", async () => {
   await request("/api/clear", { method: "POST" }).catch(() => {});
-  output.textContent = "Журнал очищен. Запустите новый поиск, чтобы увидеть результат.";
-  lastOutput = "";
+  showActivityMessage("Карточки очищены.");
+  renderVacancyCards([], false);
 });
 
 loadProfile();
 refreshState().catch((error) => {
   statusText.textContent = "Нет связи с локальным агентом";
   statusChip.classList.add("is-error");
-  output.textContent = error.message;
+  showActivityMessage(error.message, true);
 });
 window.setInterval(() => refreshState().catch(() => {}), 1200);

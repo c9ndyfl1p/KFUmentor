@@ -83,6 +83,21 @@ func (c *OllamaClient) GenerateJSON(prompt, systemPrompt string) (string, error)
 	return c.generate(prompt, systemPrompt, "json")
 }
 
+// GenerateJSONWithBudget keeps structured-output mode enabled while bounding
+// response length and request duration for slower local models.
+func (c *OllamaClient) GenerateJSONWithBudget(prompt, systemPrompt string, maxTokens int, timeout time.Duration) (string, error) {
+	client := *c.HTTPClient
+	if timeout > 0 {
+		client.Timeout = timeout
+	}
+	bounded := *c
+	bounded.HTTPClient = &client
+	if bounded.openAICompatible() {
+		return bounded.openAIChatWithMaxTokens([]ChatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: prompt}}, true, maxTokens)
+	}
+	return bounded.generateWithMaxTokens(prompt, systemPrompt, "json", maxTokens)
+}
+
 func (c *OllamaClient) generate(prompt, systemPrompt, format string) (string, error) {
 	return c.generateWithMaxTokens(prompt, systemPrompt, format, 0)
 }

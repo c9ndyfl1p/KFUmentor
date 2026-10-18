@@ -16,12 +16,31 @@ func normalizeApplicationTarget(input *taskInput) error {
 	return nil
 }
 
+func normalizeVacancyLimit(input *taskInput) error {
+	if input.VacancyLimit == 0 {
+		input.VacancyLimit = types.DefaultVacancyLimit
+	}
+	if input.VacancyLimit < 1 || input.VacancyLimit > types.MaxVacancyLimit {
+		return fmt.Errorf("лимит поиска вакансий должен быть от 1 до %d", types.MaxVacancyLimit)
+	}
+	return nil
+}
+
 func (s *server) taskArguments(input taskInput) []string {
+	vacancyLimit := input.VacancyLimit
+	if vacancyLimit == 0 {
+		vacancyLimit = types.DefaultVacancyLimit
+	}
+	applicationTarget := input.ApplicationTarget
+	if applicationTarget == 0 {
+		applicationTarget = types.DefaultApplicationTarget
+	}
 	args := []string{
 		"--task=" + input.Task,
 		"--headless=" + fmt.Sprint(!input.Visible),
 		"--auto-apply=" + fmt.Sprint(input.AutoApply),
-		"--application-target=" + fmt.Sprint(input.ApplicationTarget),
+		"--application-target=" + fmt.Sprint(applicationTarget),
+		"--vacancy-limit=" + fmt.Sprint(vacancyLimit),
 		"--resume=" + localResumePath,
 		"--profile=" + s.cfg.ProfileDir,
 		"--model-url=" + s.cfg.ModelURL,

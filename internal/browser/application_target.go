@@ -42,13 +42,20 @@ type applicationOperations struct {
 
 // Count successful applications, rather than vacancies inspected or attempts.
 // New search pages replenish the pool when jobs do not fit the saved profile.
-func runApplicationTarget(target int, queries []string, ops applicationOperations) (applicationSummary, error) {
+func runApplicationTarget(target int, queries []string, ops applicationOperations, vacancyLimits ...int) (applicationSummary, error) {
 	summary := applicationSummary{Target: target}
 	if target < 1 || target > types.MaxApplicationTarget {
 		return summary, fmt.Errorf("количество откликов должно быть от 1 до %d", types.MaxApplicationTarget)
 	}
 	if len(queries) == 0 {
 		return summary, fmt.Errorf("нет поисковых запросов")
+	}
+	vacancyLimit := 0
+	if len(vacancyLimits) > 0 {
+		vacancyLimit = vacancyLimits[0]
+		if vacancyLimit < 1 || vacancyLimit > types.MaxVacancyLimit {
+			return summary, fmt.Errorf("лимит поиска вакансий должен быть от 1 до %d", types.MaxVacancyLimit)
+		}
 	}
 	seen := map[string]bool{}
 	consecutiveEvaluationErrors := 0
@@ -88,6 +95,10 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 				key := applicationJobKey(job.URL)
 				if key == "" || seen[key] {
 					continue
+				}
+				if vacancyLimit > 0 && summary.Scanned >= vacancyLimit {
+					summary.Reason = fmt.Sprintf("Достигнут лимит поиска: проверено %d из %d вакансий.", summary.Scanned, vacancyLimit)
+					return summary, nil
 				}
 				seen[key] = true
 				summary.Scanned++
@@ -132,6 +143,10 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 		if !active {
 			break
 		}
+	}
+	if vacancyLimit > 0 && summary.Scanned >= vacancyLimit {
+		summary.Reason = fmt.Sprintf("Достигнут лимит поиска: проверено %d из %d вакансий.", summary.Scanned, vacancyLimit)
+		return summary, nil
 	}
 	summary.Reason = "Подходящих вакансий в просмотренных результатах оказалось меньше цели. Проверено до 10 страниц на каждый поисковый запрос."
 	return summary, nil
@@ -185,7 +200,7 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 		progress: func(sent, target int) {
 			log.Printf("📨 Отправлено откликов: %d из %d", sent, target)
 		},
-	})
+	}, a.vacancyLimit)
 	log.Print(summary.String())
 	return summary.String(), err
 }

@@ -20,6 +20,7 @@ import (
 
 type AIOrchestrator struct {
 	applicationTarget  int
+	vacancyLimit       int
 	searchGroups       [][]types.Job
 	letterExamplesPath string
 	jobDetails         map[string]types.Job
@@ -50,6 +51,90 @@ type JobEvaluationResult struct {
 	Analysis       string   `json:"analysis"`
 	SkillsMatch    []string `json:"skills_match"`
 	Requirements   []string `json:"requirements"`
+}
+
+// Small local models sometimes return a string, an object, or a list of
+// objects for explanatory fields. Keep the decision fields strict enough to
+// validate below, but normalize these display-only values instead of failing
+// the entire vacancy evaluation.
+func (r *JobEvaluationResult) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	readString := func(key string) string {
+		var value string
+		_ = json.Unmarshal(fields[key], &value)
+		return strings.TrimSpace(value)
+	}
+	var relevant bool
+	_ = json.Unmarshal(fields["is_relevant"], &relevant)
+	var score int
+	if err := json.Unmarshal(fields["match_score"], &score); err != nil {
+		var value string
+		if json.Unmarshal(fields["match_score"], &value) == nil {
+			score, _ = strconv.Atoi(strings.TrimSpace(value))
+		}
+	}
+	readList := func(key string) []string {
+		raw := fields[key]
+		if len(raw) == 0 || string(raw) == "null" {
+			return nil
+		}
+		var one string
+		if json.Unmarshal(raw, &one) == nil {
+			if strings.TrimSpace(one) == "" {
+				return nil
+			}
+			return []string{strings.TrimSpace(one)}
+		}
+		var values []json.RawMessage
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return []string{compactJSON(raw)}
+		}
+		items := make([]string, 0, len(values))
+		for _, item := range values {
+			var text string
+			if json.Unmarshal(item, &text) == nil {
+				if strings.TrimSpace(text) != "" {
+					items = append(items, strings.TrimSpace(text))
+				}
+				continue
+			}
+			if normalized := compactJSON(item); normalized != "" {
+				items = append(items, normalized)
+			}
+		}
+		return items
+	}
+	r.IsRelevant = relevant
+	r.Reason = readString("reason")
+	r.MatchScore = score
+	r.Recommendation = strings.ToLower(readString("recommendation"))
+	r.Analysis = readString("analysis")
+	r.SkillsMatch = readList("skills_match")
+	r.Requirements = readList("requirements")
+	return nil
+}
+
+func compactJSON(raw json.RawMessage) string {
+	var value interface{}
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	switch item := value.(type) {
+	case map[string]interface{}:
+		for _, key := range []string{"name", "title", "text", "requirement", "skill", "description"} {
+			if text, ok := item[key].(string); ok && strings.TrimSpace(text) != "" {
+				return strings.TrimSpace(text)
+			}
+		}
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func CreateLLMOrchestrator(modelURL, modelName, resumePath string, page playwright.Page, ctx playwright.BrowserContext, debug bool) *AIOrchestrator {
@@ -110,10 +195,13 @@ func (a *AIOrchestrator) createPlan(task string, autoApply bool) ([]AIAction, er
 	if autoApply {
 		return []AIAction{{Action: "apply_until_target", Parameters: map[string]interface{}{"queries": queries}, Reason: "Искать подходящие вакансии до достижения количества откликов"}}, nil
 	}
-	count := 5
+	count := a.vacancyLimit
+	if count < 1 {
+		count = types.DefaultVacancyLimit
+	}
 	if match := regexp.MustCompile(`(?i)(\d{1,2})\s+(?:подходящ\p{L}*\s+)?ваканси\p{L}*`).FindStringSubmatch(task); len(match) == 2 {
 		if parsed, err := strconv.Atoi(match[1]); err == nil && parsed > 0 {
-			count = min(parsed, 20)
+			count = min(parsed, count)
 		}
 	}
 	a.lastEvaluatedJobs = nil
@@ -250,8 +338,8 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 	fmt.Println(strings.Repeat("=", 80))
 
 	for i, job := range a.lastEvaluatedJobs {
-		log.Printf("🤔 Анализирую вакансию %d/%d: %s",
-			i+1, len(a.lastEvaluatedJobs), job.Title)
+		log.Printf("🤔 Анализирую вакансию %d/%d: %s | URL: %s",
+			i+1, len(a.lastEvaluatedJobs), job.Title, job.URL)
 
 		if !strings.Contains(job.URL, "/vacancy/") || job.URL == "" {
 			log.Printf("⚠️ Пропускаем невалидную ссылку: %s", job.URL)
@@ -436,26 +524,30 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 			return "", fmt.Errorf("hh.ru не подтвердил отклик без письма; проверьте «Мои отклики» перед повтором: %w", err)
 		}
 
-		// HH's documented fallback is to open the conversation from the
-		// response page and add the letter inside that vacancy's chat.
-		if err := clickVisible(page, []string{
+		// Prefer the direct chat action shown after an application. Some HH
+		// response dialogs do not show it, so fall back to the matching card in
+		// the applicant's response list.
+		chatSelectors := []string{
 			"a:has-text('Перейти в чат')",
 			"button:has-text('Перейти в чат')",
 			"text=Перейти в чат",
-		}); err == nil {
+		}
+		addLetterSelectors := []string{
+			"button:has-text('Добавить сопроводительное')",
+			"text=Добавить сопроводительное",
+		}
+		chatErr := clickVisible(page, chatSelectors)
+		if chatErr == nil {
 			log.Println("💬 Перехожу в чат по этой вакансии, чтобы добавить сопроводительное")
-			if err := waitForAnyVisible(page, []string{
-				"button:has-text('Добавить сопроводительное')",
-				"text=Добавить сопроводительное",
-			}, 10*time.Second); err != nil {
-				return "", fmt.Errorf("отклик отправлен без письма; чат открылся, но кнопка добавления письма не появилась: %w", err)
+		}
+		if err := waitForAnyVisible(page, addLetterSelectors, 4*time.Second); err != nil {
+			log.Println("ℹ️ В окне отклика кнопки письма нет; открываю карточку этой вакансии в откликах")
+			if openErr := openResponseCard(page, job.URL, title, company); openErr != nil {
+				return "", fmt.Errorf("отклик отправлен без письма; не удалось открыть его карточку: %w", openErr)
 			}
 		}
 
-		if err := clickVisible(page, []string{
-			"button:has-text('Добавить сопроводительное')",
-			"text=Добавить сопроводительное",
-		}); err != nil {
+		if err := clickVisible(page, addLetterSelectors); err != nil {
 			return "", fmt.Errorf("отклик отправлен без письма; в чате не найдена кнопка «Добавить сопроводительное»: %w", err)
 		}
 		if err := waitForAnyVisible(page, []string{
@@ -519,6 +611,82 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 	return "", fmt.Errorf("не найдена видимая кнопка отправки; отклик не отправлен")
 }
 
+func openResponseCard(page playwright.Page, vacancyURL, title, company string) error {
+	parsed, err := url.Parse(vacancyURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("не удалось определить адрес откликов для вакансии")
+	}
+	responsesURL := (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host, Path: "/applicant/vacancy_response"}).String()
+	log.Println("🗂️ Открываю карточку отклика для добавления сопроводительного")
+	if _, err := page.Goto(responsesURL, playwright.PageGotoOptions{
+		Timeout:   playwright.Float(30000),
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+	}); err != nil {
+		return fmt.Errorf("не открылась страница «Мои отклики»: %w", err)
+	}
+
+	titles := page.GetByText(title, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)})
+	count, err := titles.Count()
+	if err != nil || count == 0 {
+		return fmt.Errorf("в списке откликов не найдена вакансия «%s»", title)
+	}
+	var match playwright.Locator
+	var firstVisible playwright.Locator
+	for i := 0; i < count; i++ {
+		candidate := titles.Nth(i)
+		visible, _ := candidate.IsVisible()
+		if !visible {
+			continue
+		}
+		if firstVisible == nil {
+			firstVisible = candidate
+		}
+		if strings.TrimSpace(company) == "" {
+			match = candidate
+			break
+		}
+		containsCompany, evalErr := candidate.Evaluate(`(element, expected) => {
+			let node = element;
+			for (let level = 0; node && level < 10; level += 1, node = node.parentElement) {
+				const text = node.innerText || "";
+				if (text.includes(expected.title) && text.toLowerCase().includes(expected.company.toLowerCase())) return true;
+			}
+			return false;
+		}`, map[string]string{"title": title, "company": company})
+		if evalErr == nil && containsCompany == true {
+			match = candidate
+			cardChat := candidate.Locator("xpath=ancestor::*[.//a[contains(normalize-space(.), 'Перейти в чат')] or .//button[contains(normalize-space(.), 'Перейти в чат')]][1]")
+			if chatCount, _ := cardChat.Count(); chatCount > 0 {
+				if err := clickFirstVisible(cardChat.Locator("a:has-text('Перейти в чат'), button:has-text('Перейти в чат')")); err == nil {
+					return waitForAnyVisible(page, []string{"button:has-text('Добавить сопроводительное')", "text=Добавить сопроводительное"}, 10*time.Second)
+				}
+			}
+			break
+		}
+	}
+	if match == nil {
+		match = firstVisible
+	}
+	if match == nil {
+		return fmt.Errorf("карточка вакансии «%s» не отображается в откликах", title)
+	}
+	if err := match.Click(); err != nil {
+		return fmt.Errorf("не удалось открыть карточку вакансии «%s»: %w", title, err)
+	}
+
+	addLetterSelectors := []string{"button:has-text('Добавить сопроводительное')", "text=Добавить сопроводительное"}
+	if err := waitForAnyVisible(page, append(addLetterSelectors, "a:has-text('Перейти в чат')", "button:has-text('Перейти в чат')"), 8*time.Second); err != nil {
+		return fmt.Errorf("карточка отклика открылась, но действия письма или чата не появились: %w", err)
+	}
+	if clickVisible(page, addLetterSelectors) == nil {
+		return nil
+	}
+	if err := clickVisible(page, []string{"a:has-text('Перейти в чат')", "button:has-text('Перейти в чат')"}); err != nil {
+		return fmt.Errorf("в карточке не найдена ссылка на чат: %w", err)
+	}
+	return waitForAnyVisible(page, addLetterSelectors, 10*time.Second)
+}
+
 func clickVisible(page playwright.Page, selectors []string) error {
 	for _, selector := range selectors {
 		locator := page.Locator(selector)
@@ -534,6 +702,20 @@ func clickVisible(page playwright.Page, selectors []string) error {
 		}
 	}
 	return fmt.Errorf("не найдена видимая кнопка среди селекторов: %s", strings.Join(selectors, ", "))
+}
+
+func clickFirstVisible(locator playwright.Locator) error {
+	count, _ := locator.Count()
+	for i := 0; i < count; i++ {
+		candidate := locator.Nth(i)
+		visible, _ := candidate.IsVisible()
+		if visible {
+			if err := candidate.Click(); err == nil {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("не найдено видимое действие")
 }
 
 func fillVisibleMessage(page playwright.Page, message string) error {
@@ -638,6 +820,21 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 
 	profile := a.resume
 	profile.ContactInfo = types.Contact{}
+	profile.Summary = truncateRunes(profile.Summary, 900)
+	if len(profile.Skills) > 30 {
+		profile.Skills = profile.Skills[:30]
+	}
+	if len(profile.Experience) > 5 {
+		profile.Experience = profile.Experience[:5]
+	}
+	if len(profile.Projects) > 5 {
+		profile.Projects = profile.Projects[:5]
+	}
+	if len(profile.Achievements) > 5 {
+		profile.Achievements = profile.Achievements[:5]
+	}
+	job.Snippet = truncateRunes(job.Snippet, 3000)
+	userTask = truncateRunes(userTask, 500)
 	data, err := json.Marshal(struct {
 		Task    string       `json:"task"`
 		Resume  types.Resume `json:"resume"`
@@ -646,15 +843,23 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 	if err != nil {
 		return nil, err
 	}
-	response, err := a.llmClient.GenerateJSON(string(data), agentprompt.EvaluationSystem)
+	response, err := a.llmClient.GenerateJSONWithBudget(string(data), agentprompt.EvaluationSystem, 320, 90*time.Second)
 
 	if err != nil {
 		return nil, fmt.Errorf("ошибка генерации анализа: %w", err)
 	}
 
 	var result JobEvaluationResult
-	if err := json.Unmarshal([]byte(response), &result); err != nil {
-		return nil, fmt.Errorf("ошибка парсинга JSON: %w\nОтвет: %s", err, response)
+	if err := json.Unmarshal([]byte(extractJSONObject(response)), &result); err != nil {
+		const retrySystem = `Верни ровно один JSON-объект без Markdown и пояснений. Строго соблюдай типы: is_relevant boolean, reason string, match_score integer 1..10, recommendation string (apply/skip/review), analysis string, skills_match string[], requirements string[]. Не выдумывай факты; если данных мало, recommendation=review.`
+		retry, retryErr := a.llmClient.GenerateJSONWithBudget(string(data), retrySystem, 180, 45*time.Second)
+		if retryErr != nil {
+			return nil, fmt.Errorf("модель вернула некорректный JSON (%v); повторный запрос не удался: %w", err, retryErr)
+		}
+		response = retry
+		if retryParseErr := json.Unmarshal([]byte(extractJSONObject(response)), &result); retryParseErr != nil {
+			return nil, fmt.Errorf("ошибка парсинга JSON после повтора: %w; ответ: %s", retryParseErr, truncateRunes(response, 240))
+		}
 	}
 
 	if result.MatchScore < 1 || result.MatchScore > 10 {
@@ -680,7 +885,7 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 	relevantCount := 0
 	analyzedCount := 0
 	for i, job := range jobs {
-		log.Printf("🔍 Анализ вакансии %d/%d: %s", i+1, len(jobs), job.Title)
+		log.Printf("🔍 Анализ вакансии %d/%d: %s | URL: %s", i+1, len(jobs), job.Title, job.URL)
 
 		evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
 		if err != nil {
@@ -702,6 +907,8 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 
 		evaluations = append(evaluations, fmt.Sprintf("%s %s | %s | Оценка: %d/10 | %s",
 			status, job.Title, job.Company, evaluation.MatchScore, evaluation.Reason))
+		reason := strings.Join(strings.Fields(evaluation.Reason), " ")
+		log.Printf("✅ Оценка вакансии завершена: оценка: %d/10; рекомендация: %s; причина: %s", evaluation.MatchScore, evaluation.Recommendation, truncateRunes(reason, 240))
 
 		if evaluation.IsRelevant {
 			letter, err := a.generateCoverLetter(job.Title, job.Company, job)
@@ -724,6 +931,47 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 		strings.Join(evaluations, "\n"))
 
 	return result, nil
+}
+
+func extractJSONObject(response string) string {
+	response = strings.TrimSpace(response)
+	start := strings.IndexByte(response, '{')
+	if start < 0 {
+		return response
+	}
+	depth := 0
+	inString, escaped := false, false
+	for i := start; i < len(response); i++ {
+		char := response[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if char == '\\' {
+				escaped = true
+				continue
+			}
+			if char == '"' {
+				inString = false
+			}
+			continue
+		}
+		if char == '"' {
+			inString = true
+			continue
+		}
+		if char == '{' {
+			depth++
+		}
+		if char == '}' {
+			depth--
+			if depth == 0 {
+				return response[start : i+1]
+			}
+		}
+	}
+	return response[start:]
 }
 
 func getRecommendationText(rec string) string {

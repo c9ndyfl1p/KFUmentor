@@ -194,6 +194,7 @@ func RunTask(task string, cfg Config) error {
 		orchestrator := CreateLLMOrchestrator(cfg.ModelURL, cfg.ModelName, cfg.ResumePath, page, ctx, cfg.Debug)
 		orchestrator.areaID = cfg.AreaID
 		orchestrator.applicationTarget = cfg.ApplicationTarget
+		orchestrator.vacancyLimit = cfg.MaxJobs
 
 		result, err := orchestrator.ExecuteTask(task, cfg.AutoApply)
 		if err != nil {

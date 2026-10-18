@@ -246,22 +246,31 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
 .activity-title-wrap { flex: 1; min-width: 0; }
 .text-button { min-height: 36px; padding: 0 6px; color: var(--muted); background: transparent; border: 0; font-size: 12px; }
 .text-button:hover { color: var(--blue-dark); }
-.output {
-  min-height: 136px;
-  max-height: 440px;
-  overflow: auto;
-  margin: 0;
-  padding: 14px;
-  color: #405362;
-  background: #f7f9fb;
-  border: 1px solid #e8edf1;
-  border-radius: 7px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
+.vacancy-cards { display: grid; gap: 10px; }
+.activity-empty { margin: 0; padding: 22px 16px; color: var(--muted); background: #f7f9fb; border: 1px dashed var(--line-strong); border-radius: 8px; text-align: center; font-size: 13px; }
+.vacancy-progress-card { padding: 14px 15px; background: #fff; border: 1px solid var(--line); border-left: 3px solid #8ab5d1; border-radius: 8px; }
+.vacancy-progress-card[data-status="success"] { border-left-color: #36a06b; }
+.vacancy-progress-card[data-status="skipped"] { border-left-color: #a7b1ba; }
+.vacancy-progress-card[data-status="stopped"] { border-left-color: #a7b1ba; }
+.vacancy-progress-card[data-status="error"] { border-left-color: #c94b4b; }
+.vacancy-progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px; }
+.vacancy-state { color: var(--blue-dark); font-weight: 650; }
+.vacancy-progress-card[data-status="success"] .vacancy-state { color: var(--green); }
+.vacancy-progress-card[data-status="skipped"] .vacancy-state { color: var(--muted); }
+.vacancy-progress-card[data-status="stopped"] .vacancy-state { color: var(--muted); }
+.vacancy-progress-card[data-status="error"] .vacancy-state { color: #a43333; }
+.vacancy-progress-title { margin: 8px 0 2px; font-size: 14px; line-height: 1.4; }
+.vacancy-progress-title a { color: inherit; text-decoration: none; text-underline-offset: 3px; }
+.vacancy-progress-title a:hover, .vacancy-progress-title a:focus-visible { color: var(--blue-dark); text-decoration: underline; }
+.vacancy-progress-stage, .vacancy-result, .vacancy-details { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.vacancy-progress-card[data-status="running"] .vacancy-progress-stage::before,
+.vacancy-progress-card[data-status="applying"] .vacancy-progress-stage::before { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #298bc1; content: ""; animation: pulse 1.4s ease-in-out infinite; }
+.vacancy-score { display: inline-block; margin-top: 8px; padding: 3px 8px; color: #4b6171; background: #f0f4f7; border-radius: 999px; font-size: 11px; font-weight: 650; }
+.vacancy-result { color: var(--green); }
+.vacancy-details { color: #9f2c2c; }
+.activity-message { margin: 12px 0 0; padding: 10px 12px; color: var(--blue-dark); background: var(--blue-soft); border-radius: 7px; font-size: 12px; }
+.activity-message.is-error { color: #9f2c2c; background: #fff1f1; }
+.activity-message[hidden] { display: none; }
 
 .profile-card { padding-bottom: 20px; }
 .profile-card .card-heading { margin-bottom: 21px; }
@@ -371,7 +380,7 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
   .profile-footer .button { margin-top: 7px; }
   .activity-heading { align-items: flex-start; }
   .text-button { margin-left: auto; }
-  .output { min-height: 160px; font-size: 11px; }
+  .vacancy-progress-card { padding: 12px; }
   .hr-card { padding: 18px; }
   .hr-fields { grid-template-columns: 1fr; gap: 0; }
   .hr-fields > div + div { margin-top: 14px; }

@@ -62,6 +62,9 @@
                 <span class="switch" aria-hidden="true"></span>
               </label>
             </div>
+            <label class="field-label" for="vacancy-limit">Лимит поиска вакансий</label>
+            <input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint">
+            <small id="vacancy-limit-hint" class="city-hint">Максимум вакансий, которые агент найдёт и оценит. При автооткликах лимит откликов задаётся отдельно.</small>
             <label class="field-label" for="application-target">Желаемое количество откликов</label>
             <input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint">
             <small id="application-target-hint" class="city-hint">Включите «Отправлять отклики», чтобы задать количество. Поиск без отправки остаётся доступным.</small>
@@ -89,7 +92,8 @@
             </div>
             <button type="button" class="text-button" id="clear-log">Очистить</button>
           </div>
-          <pre id="output" class="output" aria-live="polite">Агент готов. Задайте задачу, чтобы начать поиск.</pre>
+          <div id="vacancy-cards" class="vacancy-cards" aria-live="polite" aria-relevant="additions text"></div>
+          <p id="activity-message" class="activity-message" role="status" aria-live="polite" hidden></p>
         </section>
 
         <section class="card hr-card" aria-labelledby="hr-title">

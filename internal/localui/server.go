@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,14 +28,18 @@ var staticFiles embed.FS
 
 const (
 	localResumePath = "data/resume.local.json"
-	maxOutputBytes  = 128 * 1024
 )
+
+var vacancyLogPattern = regexp.MustCompile(`(?:Анализирую вакансию|Анализ вакансии)\s+(\d+)/(\d+):\s*(.*?)\s+\|\s+URL:\s*(https?://\S+)`)
+var scoreLogPattern = regexp.MustCompile(`оценка:\s*(\d+)/10`)
+var evaluationDoneLogPattern = regexp.MustCompile(`Оценка вакансии завершена: оценка:\s*(\d+)/10; рекомендация:\s*(apply|skip|review); причина:\s*(.*)`)
 
 type taskInput struct {
 	Task              string `json:"task"`
 	AreaID            int    `json:"areaId"`
 	AutoApply         bool   `json:"autoApply"`
 	ApplicationTarget int    `json:"applicationTarget"`
+	VacancyLimit      int    `json:"vacancyLimit"`
 	Visible           bool   `json:"visible"`
 }
 
@@ -56,10 +61,23 @@ type hrReplyInput struct {
 }
 
 type taskState struct {
-	Running   bool       `json:"running"`
-	Status    string     `json:"status"`
-	Output    string     `json:"output"`
-	StartedAt *time.Time `json:"startedAt,omitempty"`
+	Running   bool          `json:"running"`
+	Status    string        `json:"status"`
+	Cards     []vacancyCard `json:"cards"`
+	StartedAt *time.Time    `json:"startedAt,omitempty"`
+}
+
+type vacancyCard struct {
+	Index   int    `json:"index"`
+	Total   int    `json:"total"`
+	Title   string `json:"title"`
+	URL     string `json:"url,omitempty"`
+	Stage   string `json:"stage"`
+	Status  string `json:"status"`
+	Score   int    `json:"score,omitempty"`
+	Result  string `json:"result,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	Details string `json:"details,omitempty"`
 }
 
 type server struct {
@@ -333,9 +351,9 @@ func (s *server) handleState(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleClear(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
-	s.state.Output = ""
+	s.state.Cards = nil
 	s.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]string{"status": "Журнал очищен"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "Карточки очищены"})
 }
 
 func (s *server) handleCancel(w http.ResponseWriter, r *http.Request) {
@@ -378,6 +396,10 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := normalizeApplicationTarget(&input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := normalizeVacancyLimit(&input); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -437,7 +459,7 @@ func (s *server) beginTask(status string) bool {
 		return false
 	}
 	startedAt := time.Now()
-	s.state = taskState{Running: true, Status: status, StartedAt: &startedAt}
+	s.state = taskState{Running: true, Status: status, Cards: []vacancyCard{}, StartedAt: &startedAt}
 	s.cancelRequested = false
 	return true
 }
@@ -536,15 +558,129 @@ func cleanSkills(skills []string) []string {
 }
 
 func (s *server) appendOutput(text string) {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		s.updateFromLog(line)
+	}
+}
+
+func (s *server) updateFromLog(line string) {
+	message := line
+	parts := strings.SplitN(line, " ", 3)
+	if len(parts) == 3 && len(parts[0]) == 10 && strings.Contains(parts[0], "/") {
+		message = parts[2]
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.state.Output += text
-	if len(s.state.Output) > maxOutputBytes {
-		s.state.Output = s.state.Output[len(s.state.Output)-maxOutputBytes:]
+	if match := vacancyLogPattern.FindStringSubmatch(message); len(match) == 5 {
+		index, _ := strconv.Atoi(match[1])
+		total, _ := strconv.Atoi(match[2])
+		vacancyURL := safeVacancyURL(match[4])
+		card := vacancyCard{Index: index, Total: total, Title: strings.TrimSpace(match[3]), URL: vacancyURL, Stage: "Оцениваю вакансию", Status: "running"}
+		for i := range s.state.Cards {
+			if s.state.Cards[i].Index == index {
+				s.state.Cards[i] = card
+				return
+			}
+		}
+		s.state.Cards = append(s.state.Cards, card)
+		return
 	}
-	if s.state.Running {
-		s.state.Status = "Агент выполняет задачу"
+	if len(s.state.Cards) == 0 {
+		return
 	}
+	card := &s.state.Cards[len(s.state.Cards)-1]
+	if match := evaluationDoneLogPattern.FindStringSubmatch(message); len(match) == 4 {
+		card.Score, _ = strconv.Atoi(match[1])
+		card.Stage = "Оценка завершена"
+		card.Summary = truncateForCard(match[3])
+		switch match[2] {
+		case "apply":
+			card.Status = "success"
+			card.Result = "Рекомендация: откликнуться"
+		case "skip":
+			card.Status = "skipped"
+			card.Result = "Рекомендация: пропустить"
+		default:
+			card.Status = "success"
+			card.Result = "Нужна ручная проверка"
+		}
+	} else if strings.Contains(message, "Запрашиваю анализ у AI модели") {
+		card.Stage = "Сверяю вакансию с профилем"
+	} else if strings.Contains(message, "Ошибка анализа:") || strings.Contains(message, "Ошибка оценки:") {
+		card.Stage, card.Status = "Не удалось оценить", "error"
+		card.Details = truncateForCard(message)
+	} else if strings.Contains(message, "Решение: откликнуться") {
+		card.Stage = "Готовлю отклик"
+		card.Status = "applying"
+		card.Score = scoreFromLog(message)
+	} else if strings.Contains(message, "Решение: пропустить") {
+		card.Stage, card.Status = "Вакансия пропущена", "skipped"
+		card.Score = scoreFromLog(message)
+		card.Result = "Не подходит по заданным критериям"
+	} else if strings.Contains(message, "Начинаю отклик на вакансию:") {
+		card.Stage, card.Status = "Открываю форму отклика", "applying"
+	} else if strings.Contains(message, "Сопроводительное письмо:") {
+		card.Stage = "Пишу сопроводительное"
+	} else if strings.Contains(message, "Нажимаю кнопку 'Откликнуться'") {
+		card.Stage = "Заполняю форму отклика"
+	} else if strings.Contains(message, "поля письма в форме отклика нет") {
+		card.Stage = "Добавляю письмо в карточку отклика"
+	} else if strings.Contains(message, "Перехожу в чат по этой вакансии") {
+		card.Stage = "Открываю чат отклика"
+	} else if strings.Contains(message, "Открываю карточку отклика") || strings.Contains(message, "открываю карточку этой вакансии") {
+		card.Stage = "Открываю карточку отклика"
+	} else if strings.Contains(message, "Сопроводительное письмо заполнено") {
+		card.Stage = "Отправляю отклик с письмом"
+	} else if strings.Contains(message, "Отклик не подтверждён:") || strings.Contains(message, "Ошибка отклика:") {
+		card.Stage, card.Status = "Не удалось завершить отклик", "error"
+		card.Details = truncateForCard(message)
+	} else if strings.Contains(message, "Отклик отправлен!") || strings.Contains(message, "Отклик подтверждён hh.ru") {
+		card.Stage, card.Status = "Готово", "success"
+		if _, result, ok := strings.Cut(message, "Результат: "); ok {
+			card.Result = strings.TrimSpace(result)
+		} else {
+			card.Result = "Отклик и сопроводительное добавлены"
+		}
+	} else if strings.Contains(message, "Пропускаем невалидную ссылку:") {
+		card.Stage, card.Status = "Пропущена: ссылка на вакансию недоступна", "skipped"
+	}
+}
+
+func scoreFromLog(message string) int {
+	match := scoreLogPattern.FindStringSubmatch(message)
+	if len(match) != 2 {
+		return 0
+	}
+	score, _ := strconv.Atoi(match[1])
+	return score
+}
+
+func truncateForCard(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 360 {
+		return value[:357] + "..."
+	}
+	return value
+}
+
+func safeVacancyURL(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "hh.ru" && !strings.HasSuffix(host, ".hh.ru") {
+		return ""
+	}
+	if !strings.HasPrefix(parsed.Path, "/vacancy/") {
+		return ""
+	}
+	return parsed.String()
 }
 
 func (s *server) setFinished(status, detail string) {
@@ -553,6 +689,30 @@ func (s *server) setFinished(status, detail string) {
 	s.state.Running = false
 	s.activeCmd = nil
 	s.state.Status = status
+	if status == "Задача остановлена" {
+		for i := range s.state.Cards {
+			if s.state.Cards[i].Status == "running" || s.state.Cards[i].Status == "applying" {
+				s.state.Cards[i].Stage = "Остановлено пользователем"
+				s.state.Cards[i].Status = "stopped"
+			}
+		}
+	} else if strings.Contains(strings.ToLower(status), "ошиб") || strings.Contains(strings.ToLower(status), "не удалось") {
+		for i := range s.state.Cards {
+			if s.state.Cards[i].Status == "running" || s.state.Cards[i].Status == "applying" {
+				s.state.Cards[i].Stage = "Задача завершилась с ошибкой"
+				s.state.Cards[i].Status = "error"
+				s.state.Cards[i].Details = truncateForCard(detail)
+			}
+		}
+	} else if status == "Поиск завершён" {
+		for i := range s.state.Cards {
+			if s.state.Cards[i].Status == "running" || s.state.Cards[i].Status == "applying" {
+				s.state.Cards[i].Stage = "Не получен итог обработки"
+				s.state.Cards[i].Status = "error"
+				s.state.Cards[i].Details = "Агент завершил задачу, не сообщив результат по этой вакансии."
+			}
+		}
+	}
 	if detail != "" {
 		s.state.Status += ": " + detail
 	}

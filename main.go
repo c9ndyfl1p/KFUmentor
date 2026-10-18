@@ -21,8 +21,8 @@ func loadConfig() (types.Config, error) {
 		AutoApply:  false,
 		ProfileDir: filepath.Join(os.Getenv("HOME"), ".ai-job-agent", "profile"),
 		ModelURL:   "http://localhost:11434",
-		ModelName:  "qwen2.5:7b",
-		MaxJobs:    3,
+		ModelName:  "qwen2.5:1.5b",
+		MaxJobs:    types.DefaultVacancyLimit,
 		ResumePath: "data/resume.json",
 	}
 
@@ -45,6 +45,7 @@ func main() {
 	var debug bool
 	var autoApply bool
 	var applicationTarget int
+	var vacancyLimit int
 	var profileDir string
 	var modelURL string
 	var modelName string
@@ -60,9 +61,10 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug mode")
 	flag.BoolVar(&autoApply, "auto-apply", false, "Auto apply to suitable jobs")
 	flag.IntVar(&applicationTarget, "application-target", types.DefaultApplicationTarget, "Desired successful applications (1–100)")
+	flag.IntVar(&vacancyLimit, "vacancy-limit", 0, "Maximum vacancies to inspect (1–100; defaults to config)")
 	flag.StringVar(&profileDir, "profile", filepath.Join(os.Getenv("HOME"), ".ai-job-agent", "profile"), "Browser profile directory")
 	flag.StringVar(&modelURL, "model-url", "http://localhost:11434", "Ollama model URL")
-	flag.StringVar(&modelName, "model", "qwen2.5:7b", "Model name for Ollama")
+	flag.StringVar(&modelName, "model", "qwen2.5:1.5b", "Model name for Ollama")
 	flag.BoolVar(&interactive, "interactive", false, "Interactive mode")
 	flag.StringVar(&resumePath, "resume", "data/resume.json", "Path to candidate profile JSON")
 	flag.BoolVar(&web, "web", false, "Start the local web interface")
@@ -84,6 +86,16 @@ func main() {
 			log.Fatalf("Количество откликов должно быть от 1 до %d", types.MaxApplicationTarget)
 		}
 		cfg.ApplicationTarget = applicationTarget
+		if vacancyLimit == 0 {
+			vacancyLimit = cfg.MaxJobs
+		}
+		if vacancyLimit == 0 {
+			vacancyLimit = types.DefaultVacancyLimit
+		}
+		if vacancyLimit < 1 || vacancyLimit > types.MaxVacancyLimit {
+			log.Fatalf("Лимит поиска вакансий должен быть от 1 до %d", types.MaxVacancyLimit)
+		}
+		cfg.MaxJobs = vacancyLimit
 		if profileDir != "" {
 			cfg.ProfileDir = profileDir
 		}

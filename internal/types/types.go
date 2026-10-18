@@ -2,6 +2,8 @@ package types
 
 const DefaultApplicationTarget = 5
 const MaxApplicationTarget = 100
+const DefaultVacancyLimit = 5
+const MaxVacancyLimit = 100
 
 type Job struct {
 	Title       string `json:"title"`
