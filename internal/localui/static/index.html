@@ -7,6 +7,7 @@
   <title>AI Job Agent · Локальная панель</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
+ <script src="/static/resume.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -145,6 +146,11 @@
           <label class="field-label" for="experience">Опыт работы <span class="label-hint">по одному месту в строке</span></label>
           <textarea id="experience" name="experience" rows="4" maxlength="12000" placeholder="Backend-разработчик · Компания · 2022–2025"></textarea>
 
+          <label class="field-label" for="projects">Учебные и личные проекты <span class="label-hint">по одному в строке</span></label>
+          <textarea id="projects" name="projects" rows="3" maxlength="12000" placeholder="Название проекта, задачи и использованные технологии"></textarea>
+          <label class="field-label" for="achievements">Личные достижения <span class="label-hint">по одному в строке</span></label>
+          <textarea id="achievements" name="achievements" rows="3" maxlength="12000" placeholder="Конкурсы, олимпиады, награды и ваши результаты"></textarea>
+          <button type="button" class="text-button" id="edit-profile-details">Все разделы профиля</button>
           <div class="profile-footer">
             <span id="profile-message" class="save-message" aria-live="polite"></span>
             <button class="button button-secondary" type="submit" id="save-profile">Сохранить профиль</button>
@@ -163,21 +169,32 @@
         <button type="button" class="dialog-close" id="close-resume" aria-label="Закрыть окно">×</button>
         <p class="eyebrow">ПРОФИЛЬ КАНДИДАТА</p>
         <h2 id="resume-title">Прикрепить резюме</h2>
-        <p class="resume-description">Выберите файл, чтобы заполнить профиль данными из резюме.</p>
+        <p class="resume-description">Выберите файл. Перед сохранением можно проверить и исправить все поля.</p>
       </div>
+      <div id="resume-upload-step">
       <label class="resume-dropzone" id="resume-dropzone" for="resume-file">
         <span class="upload-cloud" aria-hidden="true">↑</span>
         <strong>Перетащите файл сюда</strong>
         <span>или нажмите, чтобы выбрать на компьютере</span>
-        <span class="resume-format">Поддерживается JSON · до 1 МБ</span>
-        <input id="resume-file" name="resume" type="file" accept=".json,application/json" required>
+        <span class="resume-format">PDF с текстом, Word DOCX, JSON · до 10 МБ</span>
+        <input id="resume-file" name="resume" type="file" accept=".pdf,.docx,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/json" required>
       </label>
       <p id="resume-file-name" class="resume-file-name" aria-live="polite">Файл не выбран</p>
-      <p class="resume-local-note">Файл обрабатывается локально и не отправляется в облако.</p>
+      <p class="resume-local-note">Текст обрабатывается на этом компьютере. PDF-сканы и старый формат DOC пока не поддерживаются.</p>
+      </div>
+      <section id="resume-preview" hidden aria-label="Проверка данных резюме">
+        <p class="resume-review-note">Проверьте данные перед сохранением. Текущий профиль пока не изменён.</p>
+        <div id="resume-warnings" role="status"></div>
+        <div id="resume-fields"></div>
+        <details id="resume-evidence-section"><summary>Цитаты из документа</summary><div id="resume-evidence"></div></details>
+        <details id="resume-source-section"><summary>Извлечённый текст документа</summary><pre id="resume-source"></pre></details>
+      </section>
       <p id="resume-upload-message" class="resume-upload-message" aria-live="polite"></p>
       <div class="dialog-actions">
         <button type="button" class="button button-secondary" id="cancel-resume">Отмена</button>
-        <button type="submit" class="button button-primary" id="upload-resume" disabled>Загрузить резюме</button>
+        <button type="button" class="button button-secondary" id="resume-back" hidden>Другой файл</button>
+        <button type="submit" class="button button-primary" id="upload-resume" disabled>Разобрать резюме</button>
+        <button type="button" class="button button-primary" id="confirm-resume" hidden>Сохранить профиль</button>
       </div>
     </form>
   </dialog>

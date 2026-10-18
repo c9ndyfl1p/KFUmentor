@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,11 +38,13 @@ type taskInput struct {
 }
 
 type profileInput struct {
-	Name       string   `json:"name"`
-	Title      string   `json:"title"`
-	Summary    string   `json:"summary"`
-	Skills     []string `json:"skills"`
-	Experience string   `json:"experience"`
+	Name         string   `json:"name"`
+	Title        string   `json:"title"`
+	Summary      string   `json:"summary"`
+	Skills       []string `json:"skills"`
+	Experience   string   `json:"experience"`
+	Projects     string   `json:"projects"`
+	Achievements string   `json:"achievements"`
 }
 
 type hrReplyInput struct {
@@ -66,6 +67,7 @@ type server struct {
 	state           taskState
 	activeCmd       *exec.Cmd
 	cancelRequested bool
+	importMu        sync.Mutex
 }
 
 func Start(cfg types.Config, address string) error {
@@ -92,6 +94,8 @@ func Start(cfg types.Config, address string) error {
 	mux.HandleFunc("GET /api/areas", app.handleAreaSuggestions)
 	mux.HandleFunc("PUT /api/profile", app.handleSaveProfile)
 	mux.HandleFunc("POST /api/resume", app.handleUploadResume)
+	mux.HandleFunc("POST /api/resume/confirm", app.handleConfirmResume)
+	mux.HandleFunc("GET /api/profile/details", app.handleProfileDetails)
 	mux.HandleFunc("POST /api/hr/reply", app.handleDraftHRReply)
 	mux.HandleFunc("GET /api/state", app.handleState)
 	mux.HandleFunc("POST /api/run", app.handleRun)
@@ -193,11 +197,13 @@ func (s *server) handleGetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, profileInput{
-		Name:       profile.Name,
-		Title:      profile.Title,
-		Summary:    profile.Summary,
-		Skills:     profile.Skills,
-		Experience: formatExperience(profile.Experience),
+		Name:         profile.Name,
+		Title:        profile.Title,
+		Summary:      profile.Summary,
+		Skills:       profile.Skills,
+		Experience:   formatExperience(profile.Experience),
+		Projects:     formatProjects(profile.Projects),
+		Achievements: formatAchievements(profile.Achievements),
 	})
 }
 
@@ -276,7 +282,7 @@ func (s *server) handleSaveProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if len(input.Name) > 200 || len(input.Title) > 200 || len(input.Summary) > 5000 || len(input.Experience) > 12000 || len(input.Skills) > 100 {
+	if len(input.Name) > 200 || len(input.Title) > 200 || len(input.Summary) > 5000 || len(input.Experience) > 12000 || len(input.Projects) > 12000 || len(input.Achievements) > 12000 || len(input.Skills) > 100 {
 		writeError(w, http.StatusBadRequest, "Проверьте длину полей профиля")
 		return
 	}
@@ -286,73 +292,35 @@ func (s *server) handleSaveProfile(w http.ResponseWriter, r *http.Request) {
 	input.Skills = cleanSkills(input.Skills)
 
 	resume := types.Resume{
-		Name:       input.Name,
-		Title:      input.Title,
-		Summary:    input.Summary,
-		Skills:     input.Skills,
-		Experience: parseExperience(input.Experience),
+		Name:         input.Name,
+		Title:        input.Title,
+		Summary:      input.Summary,
+		Skills:       input.Skills,
+		Experience:   parseExperience(input.Experience),
+		Projects:     parseProjects(input.Projects),
+		Achievements: parseAchievements(input.Achievements),
 	}
 	if current, err := s.readProfile(); err == nil {
+		if input.Experience == formatExperience(current.Experience) {
+			resume.Experience = current.Experience
+		}
+		if input.Projects == formatProjects(current.Projects) {
+			resume.Projects = current.Projects
+		}
+		if input.Achievements == formatAchievements(current.Achievements) {
+			resume.Achievements = current.Achievements
+		}
 		resume.Education = current.Education
 		resume.Languages = current.Languages
 		resume.ContactInfo = current.ContactInfo
 	}
 
-	data, err := json.MarshalIndent(resume, "", "  ")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось собрать профиль")
+	if err := saveProfile(resume); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(localResumePath), 0700); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось создать папку профиля")
-		return
-	}
-	if err := os.WriteFile(localResumePath, data, 0600); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось сохранить профиль")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "Профиль сохранён на этом компьютере"})
-}
 
-func (s *server) handleUploadResume(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
-	if err := r.ParseMultipartForm(2 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "Не удалось прочитать файл. Максимальный размер — 2 МБ")
-		return
-	}
-	file, header, err := r.FormFile("resume")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Выберите файл резюме")
-		return
-	}
-	defer file.Close()
-	if !strings.EqualFold(filepath.Ext(header.Filename), ".json") {
-		writeError(w, http.StatusBadRequest, "Пока поддерживается JSON-файл профиля")
-		return
-	}
-	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
-	if err != nil || len(data) > 1<<20 {
-		writeError(w, http.StatusBadRequest, "Файл не удалось прочитать или он больше 1 МБ")
-		return
-	}
-	var profile types.Resume
-	if err := json.Unmarshal(data, &profile); err != nil {
-		writeError(w, http.StatusBadRequest, "Файл должен быть корректным JSON-профилем резюме")
-		return
-	}
-	if strings.TrimSpace(profile.Name) == "" && strings.TrimSpace(profile.Title) == "" && len(profile.Skills) == 0 {
-		writeError(w, http.StatusBadRequest, "В резюме не найдены имя, должность или навыки")
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(localResumePath), 0700); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось создать папку профиля")
-		return
-	}
-	if err := os.WriteFile(localResumePath, data, 0600); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось сохранить профиль")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "Резюме прикреплено и сохранено локально"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "Профиль сохранён на этом компьютере"})
 }
 
 func (s *server) handleState(w http.ResponseWriter, r *http.Request) {

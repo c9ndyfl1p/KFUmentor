@@ -31,78 +31,6 @@ async function request(path, options = {}) {
   return data;
 }
 
-const resumeDialog = $("#resume-dialog");
-const resumeFile = $("#resume-file");
-const resumeDropzone = $("#resume-dropzone");
-const uploadResumeButton = $("#upload-resume");
-const resumeFileName = $("#resume-file-name");
-const resumeUploadMessage = $("#resume-upload-message");
-
-function setResumeFile(file) {
-  if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".json")) {
-    resumeFile.value = "";
-    uploadResumeButton.disabled = true;
-    resumeFileName.textContent = file.name;
-    setMessage(resumeUploadMessage, "Выберите файл JSON.", true);
-    return;
-  }
-  const transfer = new DataTransfer();
-  transfer.items.add(file);
-  resumeFile.files = transfer.files;
-  resumeFileName.textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} КБ`;
-  uploadResumeButton.disabled = false;
-  setMessage(resumeUploadMessage, "");
-}
-
-function closeResumeDialog() {
-  resumeDialog.close();
-}
-
-$("#open-resume").addEventListener("click", () => {
-  resumeFile.value = "";
-  resumeFileName.textContent = "Файл не выбран";
-  uploadResumeButton.disabled = true;
-  setMessage(resumeUploadMessage, "");
-  resumeDialog.showModal();
-});
-$("#close-resume").addEventListener("click", closeResumeDialog);
-$("#cancel-resume").addEventListener("click", closeResumeDialog);
-resumeFile.addEventListener("change", () => setResumeFile(resumeFile.files[0]));
-resumeDropzone.addEventListener("dragover", (event) => {
-  event.preventDefault();
-  resumeDropzone.classList.add("is-dragging");
-});
-resumeDropzone.addEventListener("dragleave", () => resumeDropzone.classList.remove("is-dragging"));
-resumeDropzone.addEventListener("drop", (event) => {
-  event.preventDefault();
-  resumeDropzone.classList.remove("is-dragging");
-  setResumeFile(event.dataTransfer.files[0]);
-});
-resumeDialog.addEventListener("click", (event) => {
-  if (event.target === resumeDialog) closeResumeDialog();
-});
-$("#resume-upload-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!resumeFile.files[0]) return;
-  uploadResumeButton.disabled = true;
-  uploadResumeButton.textContent = "Загружаю…";
-  setMessage(resumeUploadMessage, "Проверяю и сохраняю профиль…");
-  try {
-    const formData = new FormData();
-    formData.append("resume", resumeFile.files[0]);
-    const result = await request("/api/resume", { method: "POST", body: formData });
-    fillProfile(await request("/api/profile"));
-    setMessage($("#profile-message"), result.status);
-    resumeDialog.close();
-  } catch (error) {
-    setMessage(resumeUploadMessage, error.message, true);
-    uploadResumeButton.disabled = false;
-  } finally {
-    uploadResumeButton.textContent = "Загрузить резюме";
-  }
-});
-
 function setMessage(element, message, isError = false) {
   element.textContent = message;
   element.classList.toggle("is-error", isError);
@@ -219,6 +147,8 @@ function fillProfile(profile) {
   $("#summary").value = profile.summary || "";
   $("#skills").value = (profile.skills || []).join(", ");
   $("#experience").value = profile.experience || "";
+ $("#projects").value = profile.projects || "";
+ $("#achievements").value = profile.achievements || "";
   if (!$("#hr-position").value) $("#hr-position").value = profile.title || "";
 }
 
@@ -283,6 +213,8 @@ profileForm.addEventListener("submit", async (event) => {
       summary: $("#summary").value,
       skills: $("#skills").value.split(",").map((skill) => skill.trim()).filter(Boolean),
       experience: $("#experience").value,
+ projects: $("#projects").value,
+ achievements: $("#achievements").value,
     };
     const result = await request("/api/profile", { method: "PUT", body: JSON.stringify(data) });
     setMessage($("#profile-message"), result.status);

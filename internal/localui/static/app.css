@@ -310,6 +310,24 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
 .resume-upload-message.is-error { color: #a43333; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 15px; padding-top: 16px; border-top: 1px solid var(--line); }
 
+[hidden] { display: none !important; }
+.resume-dialog { max-height: 90dvh; overflow-y: auto; }
+.resume-dialog.is-preview { width: min(100% - 32px, 760px); max-width: 760px; }
+.resume-dialog input, .resume-dialog textarea { width: 100%; box-sizing: border-box; }
+.resume-review-note { padding: 12px 14px; border-radius: 9px; background: var(--blue-soft); color: var(--blue-dark); font-size: 13px; }
+#resume-warnings { color: #805617; font-size: 12px; line-height: 1.5; }
+#resume-warnings p { margin: 6px 0; }
+#resume-fields details, #resume-evidence-section, #resume-source-section { margin-top: 17px; border-top: 1px solid var(--line); padding-top: 14px; }
+.resume-dialog summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+.resume-record { margin: 16px 0 10px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; min-width: 0; }
+.resume-record legend { padding: 0 6px; color: var(--muted); font-size: 12px; }
+.resume-record .field-label:first-of-type { margin-top: 0; }
+.resume-remove, .resume-add { margin-top: 12px; }
+.resume-remove { color: #a43333; }
+#resume-source { max-height: 330px; overflow: auto; padding: 14px; border-radius: 8px; background: #f3f6f8; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, monospace; }
+#resume-evidence blockquote { margin: 12px 0; padding: 8px 12px; border-left: 3px solid #a9bfce; color: var(--muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.resume-dialog.is-preview .dialog-actions { position: sticky; bottom: 0; padding-bottom: 12px; margin-bottom: 0; background: var(--paper); flex-wrap: wrap; }
+
 @keyframes pulse { 50% { box-shadow: 0 0 0 5px rgb(35 135 194 / 12%); } }
 
 @media (max-width: 860px) {
@@ -368,3 +386,5 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+@media (max-width: 520px) { .resume-dialog.is-preview #confirm-resume { flex: 1 0 100%; white-space: nowrap; } }

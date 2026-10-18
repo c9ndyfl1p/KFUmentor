@@ -24,14 +24,31 @@ type Config struct {
 }
 
 type Resume struct {
-	Name        string       `json:"name"`
-	Title       string       `json:"title"`
-	Experience  []Experience `json:"experience"`
-	Skills      []string     `json:"skills"`
-	Education   []Education  `json:"education"`
-	Languages   []Language   `json:"languages"`
-	Summary     string       `json:"summary"`
-	ContactInfo Contact      `json:"contact"`
+	Name         string        `json:"name"`
+	Title        string        `json:"title"`
+	Experience   []Experience  `json:"experience"`
+	Projects     []Project     `json:"projects"`
+	Achievements []Achievement `json:"achievements"`
+	Skills       []string      `json:"skills"`
+	Education    []Education   `json:"education"`
+	Languages    []Language    `json:"languages"`
+	Summary      string        `json:"summary"`
+	ContactInfo  Contact       `json:"contact"`
+}
+
+type Achievement struct {
+	Name      string `json:"name"`
+	Result    string `json:"result"`
+	Date      string `json:"date"`
+	Organizer string `json:"organizer"`
+	Link      string `json:"link"`
+}
+
+type Project struct {
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Technologies []string `json:"technologies"`
+	Link         string   `json:"link"`
 }
 
 type Experience struct {
