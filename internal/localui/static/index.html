@@ -62,6 +62,7 @@
               <button class="button button-primary" id="run-button" type="submit">
                 <span>Начать поиск</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
+              <button class="button button-secondary" id="stop-button" type="button" hidden>Остановить поиск</button>
             </div>
           </form>
         </section>
@@ -76,6 +77,37 @@
             <button type="button" class="text-button" id="clear-log">Очистить</button>
           </div>
           <pre id="output" class="output" aria-live="polite">Агент готов. Задайте задачу, чтобы начать поиск.</pre>
+        </section>
+
+        <section class="card hr-card" aria-labelledby="hr-title">
+          <div class="card-heading">
+            <div class="step-icon step-icon-muted" aria-hidden="true">HR</div>
+            <div>
+              <h2 id="hr-title">Переписка с работодателем</h2>
+              <p>ИИ подготовит ответ по сообщению HR и вашему профилю</p>
+            </div>
+          </div>
+          <form id="hr-reply-form">
+            <div class="hr-fields">
+              <div><label class="field-label" for="hr-position">Вакансия</label><input id="hr-position" maxlength="300" placeholder="Например: Go-разработчик"></div>
+              <div><label class="field-label" for="hr-company">Компания</label><input id="hr-company" maxlength="300" placeholder="Название компании"></div>
+            </div>
+            <label class="field-label" for="hr-context">Предыдущая переписка <span class="label-hint">необязательно</span></label>
+            <textarea id="hr-context" rows="3" maxlength="8000" placeholder="Добавьте предыдущие сообщения, если ответ зависит от них"></textarea>
+            <label class="field-label" for="hr-message">Сообщение от HR</label>
+            <textarea id="hr-message" rows="4" maxlength="12000" placeholder="Вставьте сюда сообщение работодателя" required></textarea>
+            <div class="hr-form-footer">
+              <span class="privacy-hint">Черновик создаётся выбранной моделью. Перед отправкой проверьте факты и договорённости.</span>
+              <button class="button button-primary" id="draft-reply" type="submit">Подготовить ответ</button>
+            </div>
+            <label class="field-label" for="hr-reply">Черновик ответа <span class="label-hint">можно отредактировать</span></label>
+            <textarea id="hr-reply" rows="5" maxlength="8000" placeholder="Ответ модели появится здесь"></textarea>
+            <div class="hr-actions">
+              <span id="hr-message-status" class="save-message" aria-live="polite"></span>
+              <button class="button button-secondary" id="copy-reply" type="button" disabled>Скопировать</button>
+              <a class="button button-secondary" href="https://hh.ru/applicant/vacancy_response" target="_blank" rel="noopener noreferrer">Открыть мои отклики на hh.ru</a>
+            </div>
+          </form>
         </section>
       </div>
 

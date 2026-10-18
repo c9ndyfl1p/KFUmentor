@@ -63,7 +63,7 @@ go run . --web --model-url=http://127.0.0.1:11434 --model=qwen2.5:7b
 - Chromium/Playwright. При первом запуске библиотека Playwright может установить драйвер; браузер устанавливается командой ниже.
 
 ```bash
-go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 install chromium
+go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install chromium
 ```
 
 На Linux системные библиотеки Chromium при необходимости установите по инструкциям Playwright для вашей ОС.

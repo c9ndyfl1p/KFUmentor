@@ -7,13 +7,13 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mihnpro/Ai_agent_2/internal/llm"
-	"github.com/mihnpro/Ai_agent_2/internal/prompt"
 	"github.com/mihnpro/Ai_agent_2/internal/types"
-	playwright "github.com/playwright-community/playwright-go"
+	playwright "github.com/mxschmitt/playwright-go"
 )
 
 type AIOrchestrator struct {
@@ -44,7 +44,6 @@ type JobEvaluationResult struct {
 	SkillsMatch    []string `json:"skills_match"`
 	Requirements   []string `json:"requirements"`
 }
-
 
 func CreateLLMOrchestrator(modelURL, modelName, resumePath string, page playwright.Page, ctx playwright.BrowserContext, debug bool) *AIOrchestrator {
 	client := llm.NewOllamaClient(modelURL, modelName)
@@ -81,84 +80,39 @@ func (a *AIOrchestrator) ExecuteTask(task string, autoApply bool) (string, error
 	}
 
 	finalReport := a.generateFinalReport()
-	
+
 	return finalReport + "\n\n" + result, nil
 }
 
 func (a *AIOrchestrator) createPlan(task string, autoApply bool) ([]AIAction, error) {
-	promptText := fmt.Sprintf(`Пользователь хочет: "%s"
-
-Проанализируй задачу пользователя и создай пошаговый план для поиска и анализа вакансий на HH.ru.
-
-Контекст:
-- Авто-отклик включен: %v
-- Есть резюме: %s
-- Задача: %s
-
-Создай план в формате JSON массив действий. 
-
-Пример плана для поиска Python разработчика:
-[
-    {
-        "action": "navigate",
-        "parameters": {"url": "https://hh.ru"},
-        "reason": "Перейти на главную страницу HH.ru"
-    },
-    {
-        "action": "search",
-        "parameters": {"query": "Python разработчик Москва"},
-        "reason": "Выполнить поиск по запросу пользователя"
-    },
-    {
-        "action": "extract_jobs",
-        "parameters": {"count": 10},
-        "reason": "Извлечь первые 10 вакансий"
-    },
-    {
-        "action": "evaluate_jobs",
-        "parameters": {},
-        "reason": "Проанализировать вакансии с помощью AI"
-    },
-    {
-        "action": "apply_to_relevant",
-        "parameters": {},
-        "reason": "Откликнуться на подходящие вакансии"
-    }
-]
-
-Только JSON, без дополнительного текста.`, task, autoApply, a.resume.Title, task)
-
-	response, err := a.llmClient.Generate(promptText, prompt.GetSystemPrompt())
-	if err != nil {
-		return nil, err
+	query := extractQueryFromTask(task)
+	count := 5
+	if match := regexp.MustCompile(`(?i)\b(\d{1,2})\b`).FindStringSubmatch(task); len(match) == 2 {
+		if parsed, err := strconv.Atoi(match[1]); err == nil && parsed > 0 {
+			count = min(parsed, 20)
+		}
 	}
-
-	// Извлекаем JSON из ответа
-	jsonStart := strings.Index(response, "[")
-	jsonEnd := strings.LastIndex(response, "]")
-	if jsonStart == -1 || jsonEnd == -1 {
-		return nil, fmt.Errorf("invalid plan response: %s", response)
+	plan := []AIAction{
+		{Action: "search", Parameters: map[string]interface{}{"query": query}, Reason: "Искать вакансии по запросу"},
+		{Action: "extract_jobs", Parameters: map[string]interface{}{"count": float64(count)}, Reason: fmt.Sprintf("Извлечь до %d вакансий", count)},
+		{Action: "evaluate_jobs", Parameters: map[string]interface{}{}, Reason: "Оценить найденные вакансии по профилю"},
 	}
-
-	jsonStr := response[jsonStart : jsonEnd+1]
-	var plan []AIAction
-	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
-		return nil, fmt.Errorf("parse plan JSON: %w", err)
+	if autoApply {
+		plan = append(plan, AIAction{Action: "apply_to_relevant", Parameters: map[string]interface{}{}, Reason: "Подготовить отклики на подходящие вакансии"})
 	}
-
 	return plan, nil
 }
 
 func (a *AIOrchestrator) executePlan(plan []AIAction) (string, error) {
 	var results []string
-	
+
 	for i, action := range plan {
 		log.Printf("🔧 Шаг %d/%d: %s", i+1, len(plan), action.Reason)
 
 		result, err := a.executeAction(action)
 		if err != nil {
 			log.Printf("⚠️ Ошибка на шаге %d: %v", i+1, err)
-			results = append(results, fmt.Sprintf("❌ Шаг %d: %s - Ошибка: %v", 
+			results = append(results, fmt.Sprintf("❌ Шаг %d: %s - Ошибка: %v",
 				i+1, action.Reason, err))
 			continue
 		}
@@ -172,7 +126,7 @@ func (a *AIOrchestrator) executePlan(plan []AIAction) (string, error) {
 			"timestamp": time.Now().Format(time.RFC3339),
 		})
 
-		results = append(results, fmt.Sprintf("✅ Шаг %d: %s - %s", 
+		results = append(results, fmt.Sprintf("✅ Шаг %d: %s - %s",
 			i+1, action.Reason, result))
 
 		time.Sleep(1 * time.Second)
@@ -228,14 +182,13 @@ func (a *AIOrchestrator) executeAction(action AIAction) (string, error) {
 		return a.handleCaptcha()
 
 	default:
-		return a.handleGenericAction(action.Action, action.Parameters)
+		return "", fmt.Errorf("unsupported action %q", action.Action)
 	}
 }
 
-
 func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 	log.Println("📨 Откликаюсь на релевантные вакансии...")
-	
+
 	if len(a.lastEvaluatedJobs) == 0 {
 		log.Println("ℹ️ Нет оцененных вакансий, извлекаю 5 вакансий...")
 		jobs, err := a.extractJobsFromPage(5)
@@ -244,27 +197,27 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 		}
 		a.lastEvaluatedJobs = jobs
 	}
-	
+
 	appliedCount := 0
 	skippedCount := 0
 	errorCount := 0
-	
+
 	var results []string
-	
+
 	fmt.Println("\n" + strings.Repeat("=", 80))
 	fmt.Println("🧠 НАЧИНАЮ АНАЛИЗ ВАКАНСИЙ И АВТООТКЛИКИ")
 	fmt.Println(strings.Repeat("=", 80))
-	
+
 	for i, job := range a.lastEvaluatedJobs {
-		log.Printf("🤔 Анализирую вакансию %d/%d: %s", 
+		log.Printf("🤔 Анализирую вакансию %d/%d: %s",
 			i+1, len(a.lastEvaluatedJobs), job.Title)
-		
+
 		if !strings.Contains(job.URL, "/vacancy/") || job.URL == "" {
 			log.Printf("⚠️ Пропускаем невалидную ссылку: %s", job.URL)
 			skippedCount++
 			continue
 		}
-		
+
 		log.Println("🧠 Запрашиваю анализ у AI модели...")
 		evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
 		if err != nil {
@@ -273,14 +226,13 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 			errorCount++
 			continue
 		}
-		
+
 		a.printJobAnalysis(job, evaluation)
 
 		shouldApply := evaluation.IsRelevant && evaluation.MatchScore >= 7
-		
+
 		if shouldApply {
 			log.Printf("✅ Решение: откликнуться (оценка: %d/10)", evaluation.MatchScore)
-			
 
 			applyResult, err := a.performJobApplication(job)
 			if err != nil {
@@ -295,14 +247,14 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 		} else {
 			log.Printf("⏭️ Решение: пропустить (оценка: %d/10)", evaluation.MatchScore)
 			skippedCount++
-			results = append(results, fmt.Sprintf("⏭️ %s: оценка %d/10", 
+			results = append(results, fmt.Sprintf("⏭️ %s: оценка %d/10",
 				job.Title, evaluation.MatchScore))
 		}
-		
-		fmt.Println() 
-		time.Sleep(3 * time.Second) 
+
+		fmt.Println()
+		time.Sleep(3 * time.Second)
 	}
-	
+
 	// Финальный отчет
 	finalResult := fmt.Sprintf(`
 📊 ИТОГ АНАЛИЗА ВАКАНСИЙ
@@ -314,28 +266,25 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 %s
 %s`,
 		strings.Repeat("=", 50),
-		len(a.lastEvaluatedJobs), 
-		appliedCount, 
-		skippedCount, 
+		len(a.lastEvaluatedJobs),
+		appliedCount,
+		skippedCount,
 		errorCount,
 		strings.Repeat("=", 50),
 		strings.Join(results, "\n"))
-	
+
 	fmt.Println(finalResult)
 	return finalResult, nil
 }
 
-
 func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 	log.Printf("📝 Начинаю отклик на вакансию: %s", job.Title)
-	
 
 	page, err := a.context.NewPage()
 	if err != nil {
 		return "", fmt.Errorf("не удалось создать страницу: %w", err)
 	}
 	defer page.Close()
-
 
 	log.Printf("🌐 Перехожу на: %s", job.URL)
 	_, err = page.Goto(job.URL, playwright.PageGotoOptions{
@@ -347,7 +296,6 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 	}
 
 	time.Sleep(2 * time.Second)
-
 
 	title, _ := page.Locator("h1").First().TextContent()
 	companyLocator := page.Locator("[data-qa='vacancy-company-name'], .vacancy-company-name")
@@ -402,7 +350,6 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 		}
 	}
 
-
 	submitBtnSelectors := []string{
 		"button:has-text('Отправить отклик')",
 		"button:has-text('Отправить')",
@@ -415,20 +362,19 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 			if err := submitBtn.First().Click(); err == nil {
 				log.Println("📤 Отправляю отклик...")
 				time.Sleep(3 * time.Second)
-				
 
 				successSelectors := []string{
 					":has-text('отправлен')",
 					":has-text('успешно')",
 					"[data-qa='vacancy-response-popup-success']",
 				}
-				
+
 				for _, successSel := range successSelectors {
 					if count, _ := page.Locator(successSel).Count(); count > 0 {
 						return fmt.Sprintf("Отклик успешно отправлен на '%s' в '%s'", title, company), nil
 					}
 				}
-				
+
 				return "Отклик отправлен (статус не подтвержден)", nil
 			}
 		}
@@ -441,19 +387,19 @@ func (a *AIOrchestrator) printJobAnalysis(job types.Job, evaluation *JobEvaluati
 
 	var scoreColor string
 	var scoreEmoji string
-	
+
 	switch {
 	case evaluation.MatchScore >= 9:
-		scoreColor = "🟢" 
+		scoreColor = "🟢"
 		scoreEmoji = "🔥"
 	case evaluation.MatchScore >= 7:
-		scoreColor = "🟡" 
+		scoreColor = "🟡"
 		scoreEmoji = "👍"
 	case evaluation.MatchScore >= 5:
-		scoreColor = "🟠" 
+		scoreColor = "🟠"
 		scoreEmoji = "🤔"
 	default:
-		scoreColor = "🔴" 
+		scoreColor = "🔴"
 		scoreEmoji = "❌"
 	}
 
@@ -488,8 +434,6 @@ func (a *AIOrchestrator) printJobAnalysis(job types.Job, evaluation *JobEvaluati
 
 	fmt.Println(output)
 }
-
-
 
 func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask string) (*JobEvaluationResult, error) {
 
@@ -535,20 +479,13 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 		strings.Join(a.resume.Skills, ", "),
 		formatExperience(a.resume.Experience))
 
-	response, err := a.llmClient.Generate(prompt, "Ты эксперт по анализу IT-вакансий. Давай детальный анализ с конкретными аргументами.")
+	response, err := a.llmClient.GenerateJSON(prompt, "Ты эксперт по анализу вакансий. Будь объективен, не придумывай факты и верни JSON-объект требуемой структуры.")
 	if err != nil {
 		return nil, fmt.Errorf("ошибка генерации анализа: %w", err)
 	}
 
-	jsonStart := strings.Index(response, "{")
-	jsonEnd := strings.LastIndex(response, "}")
-	if jsonStart == -1 || jsonEnd == -1 {
-		return nil, fmt.Errorf("не удалось найти JSON в ответе: %s", response)
-	}
-
-	jsonStr := response[jsonStart : jsonEnd+1]
 	var result JobEvaluationResult
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
 		return nil, fmt.Errorf("ошибка парсинга JSON: %w\nОтвет: %s", err, response)
 	}
 
@@ -594,13 +531,12 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 
 	result := fmt.Sprintf("\n📊 РЕЗУЛЬТАТЫ АНАЛИЗА\n%s\nПроанализировано: %d вакансий\nРелевантных: %d\n\n%s",
 		strings.Repeat("=", 50),
-		len(jobs), 
+		len(jobs),
 		relevantCount,
 		strings.Join(evaluations, "\n"))
 
 	return result, nil
 }
-
 
 func getRecommendationText(rec string) string {
 	switch strings.ToLower(rec) {
@@ -701,7 +637,6 @@ func (a *AIOrchestrator) generateFinalReport() string {
 	return report
 }
 
-
 func (a *AIOrchestrator) navigate(url string) (string, error) {
 	log.Printf("🌐 Навигация на %s", url)
 	_, err := a.page.Goto(url, playwright.PageGotoOptions{
@@ -713,7 +648,7 @@ func (a *AIOrchestrator) navigate(url string) (string, error) {
 	}
 
 	time.Sleep(2 * time.Second)
-	
+
 	if a.debug {
 		a.takeScreenshot("navigate_" + sanitizeFilename(url))
 	}
@@ -723,7 +658,7 @@ func (a *AIOrchestrator) navigate(url string) (string, error) {
 
 func (a *AIOrchestrator) searchJobs(query string) (string, error) {
 	log.Printf("🔍 Поиск вакансий: %s", query)
-	searchURL := fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=113", url.QueryEscape(query))
+	searchURL := fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", url.QueryEscape(query), hhAreaForText(query))
 
 	log.Printf("🌐 Перехожу на URL поиска: %s", searchURL)
 	_, err := a.page.Goto(searchURL, playwright.PageGotoOptions{
@@ -735,7 +670,7 @@ func (a *AIOrchestrator) searchJobs(query string) (string, error) {
 	}
 
 	time.Sleep(3 * time.Second)
-	
+
 	currentURL := a.page.URL()
 	log.Printf("📄 Текущий URL: %s", currentURL)
 
@@ -795,7 +730,6 @@ func (a *AIOrchestrator) handleGenericAction(actionName string, params map[strin
 	return fmt.Sprintf("Действие '%s' выполнено", actionName), nil
 }
 
-
 func loadResume(path string) types.Resume {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -837,7 +771,6 @@ func sanitizeFilename(name string) string {
 	return re.ReplaceAllString(name, "_")
 }
 
-
 func (a *AIOrchestrator) searchViaInputField(query string) (string, error) {
 	searchInput, err := findSearchInput(a.page)
 	if err != nil {
@@ -865,9 +798,9 @@ func (a *AIOrchestrator) extractJobsFromPage(count int) ([]types.Job, error) {
 	var jobs []types.Job
 
 	page := a.page
-	
+
 	time.Sleep(2 * time.Second)
-	
+
 	noResultsSelector := "text='По запросу ничего не найдено', text='Ничего не найдено'"
 	if count, _ := page.Locator(noResultsSelector).Count(); count > 0 {
 		return jobs, fmt.Errorf("вакансий не найдено по данному запросу")
@@ -875,17 +808,17 @@ func (a *AIOrchestrator) extractJobsFromPage(count int) ([]types.Job, error) {
 
 	vacancySelectors := []string{
 		"[data-qa='serp-item__title']", // Основной селектор HH.ru
-		"a[href*='/vacancy/']:visible", 
+		"a[href*='/vacancy/']:visible",
 	}
 
 	for _, selector := range vacancySelectors {
 		vacancyLocator := page.Locator(selector)
-		
+
 		err := vacancyLocator.First().WaitFor(playwright.LocatorWaitForOptions{
 			State:   playwright.WaitForSelectorStateAttached,
 			Timeout: playwright.Float(10000),
 		})
-		
+
 		if err != nil {
 			log.Printf("⚠️ Селектор %s не найден: %v", selector, err)
 			continue
@@ -903,39 +836,31 @@ func (a *AIOrchestrator) extractJobsFromPage(count int) ([]types.Job, error) {
 
 			for i := 0; i < limit; i++ {
 				item := vacancyLocator.Nth(i)
-				
 
 				visible, err := item.IsVisible()
 				if err != nil || !visible {
 					continue
 				}
 
-
 				href, err := item.GetAttribute("href")
 				if err != nil || href == "" {
 					continue
 				}
-
 
 				text, err := item.TextContent()
 				if err != nil || text == "" {
 					continue
 				}
 
-
 				title := cleanJobTitle(text)
-				
 
 				company := ""
-				
 
 				fullURL := normalizeVacancyURL(href)
-				
 
 				if !isRealVacancyURL(fullURL) {
 					continue
 				}
-
 
 				snippet := ""
 
@@ -951,11 +876,10 @@ func (a *AIOrchestrator) extractJobsFromPage(count int) ([]types.Job, error) {
 				if a.debug {
 					log.Printf("📝 Вакансия %d: %s | %s", i+1, truncate(job.Title, 40), truncate(job.URL, 40))
 				}
-				
 
 				time.Sleep(100 * time.Millisecond)
 			}
-			
+
 			if len(jobs) > 0 {
 				log.Printf("✅ Успешно извлечено %d вакансий", len(jobs))
 				return jobs, nil
@@ -963,66 +887,60 @@ func (a *AIOrchestrator) extractJobsFromPage(count int) ([]types.Job, error) {
 		}
 	}
 
-
 	log.Println("⚠️ Основные селекторы не сработали, использую fallback...")
 	return a.extractJobsFallback(count)
 }
 
-
 func (a *AIOrchestrator) extractJobsFallback(count int) ([]types.Job, error) {
 	var jobs []types.Job
-	
+
 	page := a.page
-	
 
 	links := page.Locator("a[href*='vacancy']:visible")
-	
+
 	linkCount, err := links.Count()
 	if err != nil {
 		return jobs, fmt.Errorf("не удалось найти ссылки: %w", err)
 	}
-	
+
 	log.Printf("ℹ️ Найдено %d ссылок с 'vacancy'", linkCount)
 	limit := min(linkCount, count)
-	
+
 	for i := 0; i < limit; i++ {
 		link := links.Nth(i)
-		
+
 		href, err := link.GetAttribute("href")
 		if err != nil || href == "" {
 			continue
 		}
-		
 
 		if !isRealVacancyURL(href) {
 			continue
 		}
-		
+
 		text, _ := link.TextContent()
 		title := cleanJobTitle(text)
-		
+
 		job := types.Job{
 			Title:   title,
 			Company: "",
 			URL:     normalizeVacancyURL(href),
 			Snippet: "",
 		}
-		
+
 		jobs = append(jobs, job)
-		
+
 		if a.debug {
 			log.Printf("🔗 Вакансия %d: %s", i+1, truncate(job.Title, 30))
 		}
 	}
-	
+
 	if len(jobs) == 0 {
 		return jobs, fmt.Errorf("не удалось извлечь ни одной вакансии")
 	}
-	
+
 	return jobs, nil
 }
-
-
 
 func cleanJobTitle(title string) string {
 	if title == "" {
@@ -1035,5 +953,3 @@ func cleanJobTitle(title string) string {
 	title = regexp.MustCompile(`\s+`).ReplaceAllString(title, " ")
 	return strings.TrimSpace(title)
 }
-
-

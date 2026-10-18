@@ -2,6 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const taskForm = $("#run-form");
 const profileForm = $("#profile-form");
 const runButton = $("#run-button");
+const stopButton = $("#stop-button");
 const output = $("#output");
 const statusChip = $("#status-chip");
 const statusText = $("#status-text");
@@ -105,7 +106,49 @@ function fillProfile(profile) {
   $("#summary").value = profile.summary || "";
   $("#skills").value = (profile.skills || []).join(", ");
   $("#experience").value = profile.experience || "";
+  if (!$("#hr-position").value) $("#hr-position").value = profile.title || "";
 }
+
+const hrReplyForm = $("#hr-reply-form");
+const hrReplyField = $("#hr-reply");
+const copyReplyButton = $("#copy-reply");
+hrReplyForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("#draft-reply");
+  button.disabled = true;
+  button.textContent = "Готовлю ответ…";
+  setMessage($("#hr-message-status"), "Отправляю контекст модели…");
+  try {
+    const result = await request("/api/hr/reply", {
+      method: "POST",
+      body: JSON.stringify({
+        company: $("#hr-company").value,
+        position: $("#hr-position").value,
+        context: $("#hr-context").value,
+        message: $("#hr-message").value,
+      }),
+    });
+    hrReplyField.value = result.reply || "";
+    copyReplyButton.disabled = !hrReplyField.value.trim();
+    setMessage($("#hr-message-status"), "Черновик готов. Проверьте его перед отправкой.");
+  } catch (error) {
+    setMessage($("#hr-message-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Подготовить ответ";
+  }
+});
+hrReplyField.addEventListener("input", () => {
+  copyReplyButton.disabled = !hrReplyField.value.trim();
+});
+copyReplyButton.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(hrReplyField.value);
+    setMessage($("#hr-message-status"), "Ответ скопирован. Вставьте его в переписку на hh.ru.");
+  } catch {
+    setMessage($("#hr-message-status"), "Не получилось скопировать. Выделите и скопируйте ответ вручную.", true);
+  }
+});
 
 async function loadProfile() {
   try {
@@ -168,6 +211,22 @@ taskForm.addEventListener("submit", async (event) => {
   }
 });
 
+stopButton.addEventListener("click", async () => {
+  stopButton.disabled = true;
+  stopButton.textContent = "Останавливаю…";
+  try {
+    await request("/api/cancel", { method: "POST" });
+    await refreshState();
+  } catch (error) {
+    output.textContent = error.message;
+    lastOutput = error.message;
+  } finally {
+    const state = await request("/api/state").catch(() => ({ running: false }));
+    stopButton.disabled = !state.running || /останавливаю/i.test(state.status || "");
+    stopButton.textContent = /останавливаю/i.test(state.status || "") ? "Останавливаю…" : "Остановить поиск";
+  }
+});
+
 async function refreshState() {
   const state = await request("/api/state");
   statusText.textContent = state.status || "Готов к поиску";
@@ -176,6 +235,9 @@ async function refreshState() {
   statusChip.classList.toggle("is-error", !state.running && /ошибк|не удалось/i.test(state.status || ""));
   runButton.disabled = Boolean(state.running);
   runButton.querySelector("span").textContent = state.running ? "Идёт поиск…" : "Начать поиск";
+  stopButton.hidden = !state.running;
+  stopButton.disabled = /останавливаю/i.test(state.status || "");
+  stopButton.textContent = stopButton.disabled ? "Останавливаю…" : "Остановить поиск";
 
   if (state.output && state.output !== lastOutput) {
     output.textContent = state.output;

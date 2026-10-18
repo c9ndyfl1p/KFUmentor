@@ -193,6 +193,7 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
 
 .apply-note { margin-top: 12px; padding: 10px 12px; color: #80500c; background: var(--amber-soft); border: 1px solid #f0dfb8; border-radius: 7px; font-size: 12px; }
 .form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 21px; }
+.form-footer [hidden] { display: none; }
 .privacy-hint { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
 .privacy-hint svg { width: 17px; height: 17px; color: #6d8496; }
 
@@ -220,6 +221,16 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
 .button-secondary:hover:not(:disabled) { background: #f4faff; border-color: #6da6c9; }
 
 .activity-card { min-height: 237px; }
+.hr-card { padding: 23px; }
+.hr-card .card-heading { margin-bottom: 16px; }
+.hr-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.hr-fields .field-label { margin-top: 0; }
+.hr-fields + .field-label { margin-top: 16px; }
+.hr-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; }
+.hr-form-footer .privacy-hint { max-width: 430px; line-height: 1.45; }
+.hr-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.hr-actions .save-message { flex: 1; }
+.hr-actions a { text-decoration: none; }
 .activity-heading { margin-bottom: 15px; }
 .activity-title-wrap { flex: 1; min-width: 0; }
 .text-button { min-height: 36px; padding: 0 6px; color: var(--muted); background: transparent; border: 0; font-size: 12px; }
@@ -322,7 +333,7 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
   .toggle-copy small { max-width: 280px; }
   .form-footer { align-items: stretch; flex-direction: column; }
   .privacy-hint { order: 2; }
-  .button-primary { width: 100%; }
+  .form-footer .button { width: 100%; }
   .profile-card form { display: block; }
   .resume-open { padding: 0 2px; font-size: 11px; }
   .profile-footer { display: block; }
@@ -330,6 +341,12 @@ input:focus, textarea:focus { border-color: #3a8bc0; box-shadow: 0 0 0 3px rgb(2
   .activity-heading { align-items: flex-start; }
   .text-button { margin-left: auto; }
   .output { min-height: 160px; font-size: 11px; }
+  .hr-card { padding: 18px; }
+  .hr-fields { grid-template-columns: 1fr; gap: 0; }
+  .hr-fields > div + div { margin-top: 14px; }
+  .hr-form-footer { align-items: stretch; flex-direction: column; }
+  .hr-actions { align-items: stretch; flex-direction: column; }
+  .hr-actions .button { width: 100%; }
   .resume-dialog-content { padding: 21px; }
   .resume-dialog h2 { font-size: 21px; }
   .dialog-actions .button { flex: 1; padding: 0 10px; }

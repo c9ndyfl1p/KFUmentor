@@ -15,9 +15,8 @@ import (
 	"time"
 
 	"github.com/mihnpro/Ai_agent_2/internal/types"
-	playwright "github.com/playwright-community/playwright-go"
+	playwright "github.com/mxschmitt/playwright-go"
 )
-
 
 type Config = types.Config
 type Job = types.Job
@@ -26,113 +25,6 @@ type LLMOrchestratorInterface interface {
 	ExecuteTask(task string, autoApply bool) (string, error)
 	GetActionHistory() []map[string]interface{}
 }
-
-
-
-
-func getRandomUserAgent() string {
-	agents := []string{
-		// Windows Chrome
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-		// Mac Chrome
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-		// Firefox
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0",
-		// Safari
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-	}
-	return agents[time.Now().UnixNano()%int64(len(agents))]
-}
-
-
-func addStealthScripts(ctx playwright.BrowserContext) error {
-	stealthScript := playwright.Script{
-		Content: playwright.String(`
-    // Удаляем webdriver property
-    const originalDescriptor = Object.getOwnPropertyDescriptor(navigator, 'webdriver');
-    if (originalDescriptor) {
-        delete navigator.webdriver;
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        });
-    }
-    
-    // Скрываем automation в window
-    if (window.chrome) {
-        window.chrome = {
-            runtime: {},
-            loadTimes: function() {},
-            csi: function() {},
-            app: {}
-        };
-    }
-    
-    // Изменяем languages
-    Object.defineProperty(navigator, 'languages', {
-        get: () => ['ru-RU', 'ru', 'en-US', 'en', 'en-GB']
-    });
-    
-    // Изменяем plugins
-    Object.defineProperty(navigator, 'plugins', {
-        get: () => {
-            return [
-                {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer'},
-                {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai'},
-                {name: 'Native Client', filename: 'internal-nacl-plugin'}
-            ];
-        }
-    });
-    
-    // Изменяем platform
-    const originalPlatform = navigator.platform;
-    Object.defineProperty(navigator, 'platform', {
-        get: () => originalPlatform,
-        configurable: true
-    });
-    
-    // Добавляем noise в performance timing
-    if (window.performance && window.performance.now) {
-        const originalNow = performance.now.bind(performance);
-        performance.now = function() {
-            return originalNow() + Math.random() * 5;
-        };
-    }
-    
-    // Модифицируем permissions
-    const originalQuery = navigator.permissions.query;
-    navigator.permissions.query = function(parameters) {
-        if (parameters.name === 'notifications') {
-            return Promise.resolve({
-                state: Notification.permission
-            });
-        }
-        return originalQuery(parameters);
-    };
-    
-    // Ложим cookie для обхода проверок
-    if (!document.cookie.includes('visited=true')) {
-        document.cookie = 'visited=true; max-age=86400; path=/';
-    }
-    
-    console.log('[Stealth] Браузер замаскирован');
-    `),
-	}
-
-	err := ctx.AddInitScript(stealthScript)
-
-	if err != nil {
-		log.Printf("⚠️ Не удалось добавить stealth скрипт: %v", err)
-		return err
-	}
-
-	log.Println("✅ Stealth скрипты добавлены")
-	return nil
-}
-
 
 func humanLikeDelay() {
 	delays := []time.Duration{
@@ -147,171 +39,64 @@ func humanLikeDelay() {
 	time.Sleep(delay)
 }
 
-func createStealthContext(pw *playwright.Playwright, profileDir string, headless bool, debug bool) (playwright.BrowserContext, error) {
-
-	args := []string{
-		"--disable-blink-features=AutomationControlled",
-		"--disable-features=IsolateOrigins,site-per-process",
-		"--disable-site-isolation-trials",
-		"--disable-web-security",
-		"--disable-features=BlockInsecurePrivateNetworkRequests",
-		"--no-sandbox",
-		"--disable-setuid-sandbox",
-		"--disable-dev-shm-usage",
-		"--disable-accelerated-2d-canvas",
-		"--disable-gpu",
-		"--disable-background-timer-throttling",
-		"--disable-backgrounding-occluded-windows",
-		"--disable-renderer-backgrounding",
-		"--disable-features=AudioServiceOutOfProcess",
-		"--disable-features=TranslateUI",
-		"--lang=ru-RU,ru",
-		"--user-agent=" + getRandomUserAgent(),
-		"--disable-webgl",
-		"--disable-3d-apis",
-		"--disable-reading-from-canvas",
-		"--disable-notifications",
-	}
-
-
-	viewports := []playwright.Size{
-		{Width: 1920, Height: 1080},
-		{Width: 1366, Height: 768},
-		{Width: 1536, Height: 864},
-		{Width: 1440, Height: 900},
-		{Width: 1600, Height: 900},
-	}
-
-	viewport := viewports[time.Now().UnixNano()%int64(len(viewports))]
-
-
-	timezone := "Europe/Moscow"
-	if rand.Intn(2) == 0 {
-		timezone = "UTC"
-	}
-
-
-	var ctx playwright.BrowserContext
-	var err error
-
+func createBrowserContext(pw *playwright.Playwright, profileDir string, headless bool, debug bool) (playwright.BrowserContext, error) {
+	viewport := playwright.Size{Width: 1440, Height: 900}
 	if profileDir != "" {
 		absPath, err := filepath.Abs(profileDir)
 		if err != nil {
 			return nil, fmt.Errorf("could not determine absolute path for profile dir: %w", err)
 		}
-
-
 		if err := os.MkdirAll(absPath, 0755); err != nil {
 			return nil, fmt.Errorf("could not create profile dir %s: %w", absPath, err)
 		}
-
-		log.Printf("📁 Using persistent profile dir: %s", absPath)
-
-
-		ctx, err = pw.Chromium.LaunchPersistentContext(
-			absPath,
-			playwright.BrowserTypeLaunchPersistentContextOptions{
-				Headless:          playwright.Bool(headless),
-				Args:              args,
-				Viewport:          &viewport,
-				UserAgent:         playwright.String(getRandomUserAgent()),
-				TimezoneId:        playwright.String(timezone), 
-				AcceptDownloads:   playwright.Bool(true),
-				BypassCSP:         playwright.Bool(true),
-				IgnoreHttpsErrors: playwright.Bool(true), 
-				JavaScriptEnabled: playwright.Bool(true),
-				Locale:            playwright.String("ru-RU"),
-				ColorScheme:       playwright.ColorSchemeLight,
-				Permissions:       []string{"geolocation"},
-			},
-		)
-
-		if err != nil {
-			if debug {
-				log.Printf("⚠️ Failed to create persistent context: %v", err)
-
-				return createRegularContext(pw, headless, debug)
-			}
-			return nil, fmt.Errorf("could not launch persistent context: %w", err)
+		log.Printf("Using persistent browser profile: %s", absPath)
+		ctx, err := pw.Chromium.LaunchPersistentContext(absPath, playwright.BrowserTypeLaunchPersistentContextOptions{
+			Headless:          playwright.Bool(headless),
+			Viewport:          &viewport,
+			AcceptDownloads:   playwright.Bool(true),
+			TimezoneId:        playwright.String("Europe/Moscow"),
+			JavaScriptEnabled: playwright.Bool(true),
+			Locale:            playwright.String("ru-RU"),
+			ColorScheme:       playwright.ColorSchemeLight,
+		})
+		if err == nil {
+			return ctx, nil
 		}
-	} else {
-
-		ctx, err = createRegularContext(pw, headless, debug)
-		if err != nil {
-			return nil, err
+		if !debug {
+			return nil, fmt.Errorf("could not launch persistent browser profile: %w", err)
 		}
+		log.Printf("Persistent browser profile unavailable, using temporary session: %v", err)
 	}
-
-
-	if err := addStealthScripts(ctx); err != nil && debug {
-		log.Printf("⚠️ Stealth scripts warning: %v", err)
-	}
-
-
-	extraHeaders := map[string]string{
-		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-		"Accept-Language":           "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-		"Accept-Encoding":           "gzip, deflate, br",
-		"Connection":                "keep-alive",
-		"Upgrade-Insecure-Requests": "1",
-		"Sec-Fetch-Dest":            "document",
-		"Sec-Fetch-Mode":            "navigate",
-		"Sec-Fetch-Site":            "none",
-		"Sec-Fetch-User":            "?1",
-		"Cache-Control":             "max-age=0",
-	}
-
-	ctx.SetExtraHTTPHeaders(extraHeaders)
-
-	log.Printf("✅ Stealth контекст создан: %dx%d, %s",
-		viewport.Width, viewport.Height, timezone)
-
-	return ctx, nil
+	return createRegularContext(pw, headless)
 }
 
-
-func createRegularContext(pw *playwright.Playwright, headless bool, debug bool) (playwright.BrowserContext, error) {
+func createRegularContext(pw *playwright.Playwright, headless bool) (playwright.BrowserContext, error) {
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(headless),
-		Args: []string{
-			"--disable-blink-features=AutomationControlled",
-			"--disable-dev-shm-usage",
-			"--no-sandbox",
-			"--user-agent=" + getRandomUserAgent(),
-		},
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("could not launch browser: %w", err)
 	}
-
-	viewport := playwright.Size{Width: 1920, Height: 1080}
+	viewport := playwright.Size{Width: 1440, Height: 900}
 	ctx, err := browser.NewContext(playwright.BrowserNewContextOptions{
 		Viewport:          &viewport,
-		UserAgent:         playwright.String(getRandomUserAgent()),
 		AcceptDownloads:   playwright.Bool(true),
-		IgnoreHttpsErrors: playwright.Bool(true), 
+		TimezoneId:        playwright.String("Europe/Moscow"),
+		JavaScriptEnabled: playwright.Bool(true),
 		Locale:            playwright.String("ru-RU"),
-		ColorScheme:       playwright.ColorSchemeLight, 
+		ColorScheme:       playwright.ColorSchemeLight,
 	})
-
 	if err != nil {
-		browser.Close()
+		_ = browser.Close()
 		return nil, fmt.Errorf("could not create browser context: %w", err)
 	}
-
 	return ctx, nil
 }
-
-
-
 
 func RunTask(task string, cfg Config) error {
 	log.Printf("Starting task: %s (AI mode: %v, Debug: %v)\n", task, cfg.UseAI, cfg.Debug)
 
-
 	rand.Seed(time.Now().UnixNano())
-
 
 	pw, err := playwright.Run()
 	if err != nil {
@@ -332,19 +117,16 @@ func RunTask(task string, cfg Config) error {
 		}
 	}()
 
-
-	ctx, err := createStealthContext(pw, cfg.ProfileDir, cfg.Headless, cfg.Debug)
+	ctx, err := createBrowserContext(pw, cfg.ProfileDir, cfg.Headless, cfg.Debug)
 	if err != nil {
-		return fmt.Errorf("could not create stealth context: %w", err)
+		return fmt.Errorf("could not create browser context: %w", err)
 	}
 	defer ctx.Close()
-
 
 	page, err := ctx.NewPage()
 	if err != nil {
 		return fmt.Errorf("could not create page: %w", err)
 	}
-
 
 	if cfg.Debug {
 		defer func() {
@@ -357,44 +139,6 @@ func RunTask(task string, cfg Config) error {
 		}()
 	}
 
-
-	page.Route("**/*", func(route playwright.Route) {
-		request := route.Request()
-		url := request.URL()
-
-
-		blockPatterns := []string{
-			"/article/",
-			"/special/",
-			"/partner/",
-			"/promo/",
-			"utm_source=hh_lead_gen",
-			"hhtmFrom=vacancy_immediate_redirect",
-			"utm_campaign=",
-			"gazpromneft",
-			"doubleclick.net",
-			"google-analytics.com",
-			"googlesyndication.com",
-			"googleads.g.doubleclick.net",
-			"mc.yandex.ru",
-			"an.yandex.ru",
-		}
-
-		for _, pattern := range blockPatterns {
-			if strings.Contains(url, pattern) {
-				if cfg.Debug {
-					log.Printf("🚫 Блокируем рекламу: %s", url)
-				}
-				route.Abort()
-				return
-			}
-		}
-
-
-		route.Continue()
-	})
-
-
 	if cfg.ProfileDir != "" {
 		loggedIn, err := verifyAndHandleLogin(page, cfg.Headless, cfg.ProfileDir, cfg.AutoApply)
 		if err != nil {
@@ -406,16 +150,12 @@ func RunTask(task string, cfg Config) error {
 		}
 	}
 
-
 	humanLikeDelay()
-
 
 	if cfg.UseAI {
 		log.Println("🔮 Использую AI-агента для выполнения задачи")
 
-
 		orchestrator := CreateLLMOrchestrator(cfg.ModelURL, cfg.ModelName, cfg.ResumePath, page, ctx, cfg.Debug)
-
 
 		result, err := orchestrator.ExecuteTask(task, cfg.AutoApply)
 		if err != nil {
@@ -431,7 +171,6 @@ func RunTask(task string, cfg Config) error {
 		}
 
 		log.Printf("✅ AI agent completed task: %s", result)
-
 
 		report := orchestrator.GetActionHistory()
 		b, _ := json.MarshalIndent(report, "", "  ")
@@ -464,7 +203,6 @@ func RunTask(task string, cfg Config) error {
 			return nil
 		}
 
-
 		if _, err := page.Goto("https://google.com", playwright.PageGotoOptions{Timeout: playwright.Float(30_000)}); err != nil {
 			return err
 		}
@@ -473,11 +211,8 @@ func RunTask(task string, cfg Config) error {
 	}
 }
 
-
-
 func verifyAndHandleLogin(page playwright.Page, headless bool, profileDir string, autoApply bool) (bool, error) {
 	log.Println("Verifying profile login state on hh.ru...")
-
 
 	urls := []string{"https://hh.ru", "https://hh.ru/applicant"}
 
@@ -500,7 +235,6 @@ func verifyAndHandleLogin(page playwright.Page, headless bool, profileDir string
 		}
 	}
 
-
 	if headless {
 		log.Println("⚠️  Headless режим: проверяю сохраненную сессию...")
 
@@ -514,11 +248,9 @@ func verifyAndHandleLogin(page playwright.Page, headless bool, profileDir string
 			}
 		}
 
-
 		log.Println("⚠️  Headless режим: разрешаю работу без логина (только поиск)")
 		return false, nil
 	}
-
 
 	log.Println("Profile is not logged-in: opening login page")
 	loginURL := "https://hh.ru/account/login"
@@ -607,7 +339,33 @@ const defaultHHArea = 113
 
 func buildHHSearchURL(query string) string {
 	escaped := url.QueryEscape(query)
-	return fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", escaped, defaultHHArea)
+	return fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", escaped, hhAreaForText(query))
+}
+
+func hhAreaForText(text string) int {
+	text = strings.ToLower(text)
+	areas := []struct {
+		terms []string
+		id    int
+	}{
+		{terms: []string{"москв"}, id: 1},
+		{terms: []string{"санкт-петербург", "петербург", "спб"}, id: 2},
+		{terms: []string{"екатеринбург"}, id: 3},
+		{terms: []string{"новосибирск"}, id: 4},
+		{terms: []string{"нижний новгород"}, id: 66},
+		{terms: []string{"казан"}, id: 88},
+		{terms: []string{"самар"}, id: 78},
+		{terms: []string{"краснодар"}, id: 53},
+		{terms: []string{"владивосток"}, id: 22},
+	}
+	for _, area := range areas {
+		for _, term := range area.terms {
+			if strings.Contains(text, term) {
+				return area.id
+			}
+		}
+	}
+	return defaultHHArea
 }
 
 func navigateWithRetry(page playwright.Page, url string, timeoutMs int) error {
@@ -616,14 +374,15 @@ func navigateWithRetry(page playwright.Page, url string, timeoutMs int) error {
 	for i := 1; i <= attempts; i++ {
 		log.Printf("navigating to %s (attempt %d/%d)", url, i, attempts)
 
-
 		if i > 1 {
 			time.Sleep(time.Duration(1<<uint(i-1)) * time.Second)
 		}
 
 		_, err := page.Goto(url, playwright.PageGotoOptions{
-			Timeout:   playwright.Float(float64(timeoutMs)),
-			WaitUntil: playwright.WaitUntilStateNetworkidle,
+			Timeout: playwright.Float(float64(timeoutMs)),
+			// hh.ru keeps analytics and background requests open; waiting for
+			// full load or network idle can time out after the document is ready.
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 		})
 		if err == nil {
 			return nil
@@ -1122,7 +881,6 @@ func GetJob(title, company, url, snippet string) Job {
 	return types.GetJob(title, company, url, snippet)
 }
 
-
 func isRealVacancyURL(url string) bool {
 	if url == "" {
 		return false
@@ -1134,7 +892,6 @@ func isRealVacancyURL(url string) bool {
 		"/vacancy/",
 		"vacancy/",
 	}
-
 
 	excludePatterns := []string{
 		"/article/",
@@ -1150,7 +907,6 @@ func isRealVacancyURL(url string) bool {
 		"from=share_ios",
 	}
 
-
 	hasVacancy := false
 	for _, pattern := range mustContainPatterns {
 		if strings.Contains(urlLower, pattern) {
@@ -1163,13 +919,11 @@ func isRealVacancyURL(url string) bool {
 		return false
 	}
 
-
 	for _, pattern := range excludePatterns {
 		if strings.Contains(urlLower, pattern) {
 			return false
 		}
 	}
-
 
 	if urlLower == "https://hh.ru" ||
 		urlLower == "https://hh.ru/" ||
@@ -1178,13 +932,11 @@ func isRealVacancyURL(url string) bool {
 		return false
 	}
 
-
 	re := regexp.MustCompile(`/vacancy/(\d+)`)
 	matches := re.FindStringSubmatch(urlLower)
 	if len(matches) < 2 {
-		return false 
+		return false
 	}
-
 
 	vacancyID := matches[1]
 	if _, err := strconv.Atoi(vacancyID); err != nil {
@@ -1194,16 +946,13 @@ func isRealVacancyURL(url string) bool {
 	return true
 }
 
-
 func normalizeVacancyURL(url string) string {
 	if url == "" {
 		return url
 	}
 
-
 	if idx := strings.Index(url, "?"); idx != -1 {
 		base := url[:idx]
-
 
 		query := url[idx+1:]
 		params := strings.Split(query, "&")
@@ -1223,11 +972,9 @@ func normalizeVacancyURL(url string) string {
 		return base
 	}
 
-
 	if strings.HasPrefix(url, "//") {
 		return "https:" + url
 	}
-
 
 	if strings.HasPrefix(url, "/") {
 		return "https://hh.ru" + url
@@ -1235,7 +982,6 @@ func normalizeVacancyURL(url string) string {
 
 	return url
 }
-
 
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
