@@ -395,17 +395,45 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 			"[data-qa='vacancy-response-success']",
 			"button:has-text('Вы откликнулись')",
 			"text=Отклик отправлен",
+			"a:has-text('Перейти в чат')",
+			"button:has-text('Перейти в чат')",
+			"text=Резюме доставлено",
 		}, 8*time.Second); err != nil {
 			return "", fmt.Errorf("hh.ru не подтвердил отклик без письма; проверьте «Мои отклики» перед повтором: %w", err)
+		}
+
+		// HH's documented fallback is to open the conversation from the
+		// response page and add the letter inside that vacancy's chat.
+		if err := clickVisible(page, []string{
+			"a:has-text('Перейти в чат')",
+			"button:has-text('Перейти в чат')",
+			"text=Перейти в чат",
+		}); err == nil {
+			log.Println("💬 Перехожу в чат по этой вакансии, чтобы добавить сопроводительное")
+			if err := waitForAnyVisible(page, []string{
+				"button:has-text('Добавить сопроводительное')",
+				"text=Добавить сопроводительное",
+			}, 10*time.Second); err != nil {
+				return "", fmt.Errorf("отклик отправлен без письма; чат открылся, но кнопка добавления письма не появилась: %w", err)
+			}
 		}
 
 		if err := clickVisible(page, []string{
 			"button:has-text('Добавить сопроводительное')",
 			"text=Добавить сопроводительное",
 		}); err != nil {
-			return "", fmt.Errorf("отклик отправлен без письма; кнопка «Добавить сопроводительное» не найдена: %w", err)
+			return "", fmt.Errorf("отклик отправлен без письма; в чате не найдена кнопка «Добавить сопроводительное»: %w", err)
 		}
-		time.Sleep(time.Second)
+		if err := waitForAnyVisible(page, []string{
+			"textarea[data-qa='vacancy-response-popup-form-letter-input']",
+			"textarea[name='message']",
+			"textarea[placeholder*='сопровод']",
+			"textarea[placeholder*='Сообщение']",
+			"input[placeholder*='Сообщение']",
+			"[contenteditable='true']",
+		}, 5*time.Second); err != nil {
+			return "", fmt.Errorf("отклик отправлен без письма; после нажатия кнопки поле ввода не появилось: %w", err)
+		}
 		if err := fillVisibleMessage(page, coverLetter); err != nil {
 			return "", fmt.Errorf("отклик отправлен без письма; после «Добавить сопроводительное» поле не найдено: %w", err)
 		}
@@ -478,6 +506,9 @@ func fillVisibleMessage(page playwright.Page, message string) error {
 	selectors := []string{
 		"textarea[data-qa='vacancy-response-popup-form-letter-input']",
 		"textarea[name='message']",
+		"textarea[placeholder*='сопровод']",
+		"textarea[placeholder*='Сообщение']",
+		"input[placeholder*='Сообщение']",
 		"textarea",
 		"[contenteditable='true']",
 	}
