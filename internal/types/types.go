@@ -1,5 +1,8 @@
 package types
 
+const DefaultApplicationTarget = 5
+const MaxApplicationTarget = 100
+
 type Job struct {
 	Title       string `json:"title"`
 	Company     string `json:"company"`
@@ -11,16 +14,17 @@ type Job struct {
 }
 
 type Config struct {
-	Headless   bool
-	Debug      bool
-	UseAI      bool
-	AutoApply  bool
-	ProfileDir string
-	ModelURL   string
-	ModelName  string
-	AreaID     int
-	MaxJobs    int
-	ResumePath string
+	Headless          bool
+	Debug             bool
+	UseAI             bool
+	AutoApply         bool
+	ProfileDir        string
+	ModelURL          string
+	ModelName         string
+	AreaID            int
+	MaxJobs           int
+	ApplicationTarget int
+	ResumePath        string
 }
 
 type Resume struct {

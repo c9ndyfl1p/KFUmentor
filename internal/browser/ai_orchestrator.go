@@ -19,6 +19,7 @@ import (
 )
 
 type AIOrchestrator struct {
+	applicationTarget  int
 	searchGroups       [][]types.Job
 	letterExamplesPath string
 	jobDetails         map[string]types.Job
@@ -90,6 +91,9 @@ func (a *AIOrchestrator) ExecuteTask(task string, autoApply bool) (string, error
 		return "", fmt.Errorf("plan execution failed: %w", err)
 	}
 
+	if autoApply {
+		return result, nil
+	}
 	finalReport := a.generateFinalReport()
 
 	return finalReport + "\n\n" + result, nil
@@ -102,6 +106,9 @@ func (a *AIOrchestrator) createPlan(task string, autoApply bool) ([]AIAction, er
 	queries := a.searchQueries(task)
 	if len(queries) == 0 {
 		return nil, fmt.Errorf("не удалось определить профессию: уточните задачу")
+	}
+	if autoApply {
+		return []AIAction{{Action: "apply_until_target", Parameters: map[string]interface{}{"queries": queries}, Reason: "Искать подходящие вакансии до достижения количества откликов"}}, nil
 	}
 	count := 5
 	if match := regexp.MustCompile(`(?i)(\d{1,2})\s+(?:подходящ\p{L}*\s+)?ваканси\p{L}*`).FindStringSubmatch(task); len(match) == 2 {
@@ -120,9 +127,6 @@ func (a *AIOrchestrator) createPlan(task string, autoApply bool) ([]AIAction, er
 	}
 	plan = append(plan, AIAction{Action: "evaluate_jobs", Parameters: map[string]interface{}{"count": float64(count)}, Reason: "Оценить вакансии по описанию и профилю"})
 
-	if autoApply {
-		plan = append(plan, AIAction{Action: "apply_to_relevant", Parameters: map[string]interface{}{}, Reason: "Подготовить отклики на подходящие вакансии"})
-	}
 	return plan, nil
 }
 
@@ -197,6 +201,12 @@ func (a *AIOrchestrator) executeAction(action AIAction) (string, error) {
 		}
 		return a.evaluateAllJobsOnPage()
 
+	case "apply_until_target":
+		queries, ok := action.Parameters["queries"].([]string)
+		if !ok {
+			return "", fmt.Errorf("не заданы поисковые запросы")
+		}
+		return a.applyUntilTarget(queries)
 	case "apply_to_relevant":
 		if !a.autoApply {
 			return "Отклики не отправлялись: для отправки требуется явно включить --auto-apply", nil
@@ -331,6 +341,12 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 
 	time.Sleep(2 * time.Second)
 
+	already := page.Locator("button:has-text('Вы откликнулись'), a:has-text('Вы откликнулись')")
+	if count, _ := already.Count(); count > 0 {
+		if visible, _ := already.First().IsVisible(); visible {
+			return "", errAlreadyApplied
+		}
+	}
 	detailed, err := readJobDetails(page, job)
 	if err != nil {
 		return "", err
@@ -827,13 +843,15 @@ func (a *AIOrchestrator) navigate(url string) (string, error) {
 	return "Успешно перешли на страницу", nil
 }
 
-func (a *AIOrchestrator) searchJobs(query string) (string, error) {
+func (a *AIOrchestrator) searchJobs(query string) (string, error) { return a.searchJobsPage(query, 0) }
+
+func (a *AIOrchestrator) searchJobsPage(query string, pageNumber int) (string, error) {
 	log.Printf("🔍 Поиск вакансий: %s", query)
 	areaID := a.areaID
 	if areaID == 0 {
 		areaID = hhAreaForText(a.currentTask)
 	}
-	searchURL := fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", url.QueryEscape(query), areaID)
+	searchURL := fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d&page=%d", url.QueryEscape(query), areaID, pageNumber)
 
 	log.Printf("🌐 Перехожу на URL поиска: %s", searchURL)
 	_, err := a.page.Goto(searchURL, playwright.PageGotoOptions{
@@ -985,9 +1003,9 @@ func (a *AIOrchestrator) extractJobsFromPage(count int) ([]types.Job, error) {
 
 	time.Sleep(2 * time.Second)
 
-	noResultsSelector := "text='По запросу ничего не найдено', text='Ничего не найдено'"
+	noResultsSelector := "text=/ничего не найдено|вакансий не найдено|нет подходящих вакансий/i"
 	if count, _ := page.Locator(noResultsSelector).Count(); count > 0 {
-		return jobs, fmt.Errorf("вакансий не найдено по данному запросу")
+		return jobs, errNoVacancies
 	}
 
 	vacancySelectors := []string{

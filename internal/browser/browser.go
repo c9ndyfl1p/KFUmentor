@@ -127,6 +127,9 @@ func OpenLogin(cfg Config) error {
 }
 
 func RunTask(task string, cfg Config) error {
+	if cfg.AutoApply && !cfg.UseAI {
+		return fmt.Errorf("для отправки заданного количества откликов включите UseAI в конфигурации")
+	}
 	log.Printf("Starting task: %s (AI mode: %v, Debug: %v)\n", task, cfg.UseAI, cfg.Debug)
 
 	rand.Seed(time.Now().UnixNano())
@@ -190,6 +193,7 @@ func RunTask(task string, cfg Config) error {
 
 		orchestrator := CreateLLMOrchestrator(cfg.ModelURL, cfg.ModelName, cfg.ResumePath, page, ctx, cfg.Debug)
 		orchestrator.areaID = cfg.AreaID
+		orchestrator.applicationTarget = cfg.ApplicationTarget
 
 		result, err := orchestrator.ExecuteTask(task, cfg.AutoApply)
 		if err != nil {

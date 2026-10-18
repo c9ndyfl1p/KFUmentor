@@ -65,12 +65,12 @@ func TestPlanUsesModelQueriesAndExplicitApplicationPermission(t *testing.T) {
 		t.Fatalf("unexpected plan: %+v", plan)
 	}
 	for _, step := range plan {
-		if step.Action == "apply_to_relevant" {
+		if step.Action == "apply_to_relevant" || step.Action == "apply_until_target" {
 			t.Fatal("user text must not enable submissions")
 		}
 	}
 	plan, err = a.createPlan("ML Engineer с зарплатой 20 тысяч", true)
-	if err != nil || plan[len(plan)-2].Parameters["count"] != float64(5) || plan[len(plan)-1].Action != "apply_to_relevant" {
+	if err != nil || len(plan) != 1 || plan[0].Action != "apply_until_target" {
 		t.Fatalf("unexpected plan: %+v %v", plan, err)
 	}
 }

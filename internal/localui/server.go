@@ -31,10 +31,11 @@ const (
 )
 
 type taskInput struct {
-	Task      string `json:"task"`
-	AreaID    int    `json:"areaId"`
-	AutoApply bool   `json:"autoApply"`
-	Visible   bool   `json:"visible"`
+	Task              string `json:"task"`
+	AreaID            int    `json:"areaId"`
+	AutoApply         bool   `json:"autoApply"`
+	ApplicationTarget int    `json:"applicationTarget"`
+	Visible           bool   `json:"visible"`
 }
 
 type profileInput struct {
@@ -376,6 +377,11 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Указан недопустимый регион")
 		return
 	}
+	if err := normalizeApplicationTarget(&input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	profile, err := s.readProfile()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -391,19 +397,8 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	args := []string{
-		"--task=" + input.Task,
-		"--headless=" + fmt.Sprint(!input.Visible),
-		"--auto-apply=" + fmt.Sprint(input.AutoApply),
-		"--resume=" + localResumePath,
-		"--profile=" + s.cfg.ProfileDir,
-		"--model-url=" + s.cfg.ModelURL,
-		"--model=" + s.cfg.ModelName,
-		"--debug=" + fmt.Sprint(s.cfg.Debug),
-	}
-	if input.AreaID > 0 {
-		args = append(args, "--area="+fmt.Sprint(input.AreaID))
-	}
+	args := s.taskArguments(input)
+
 	if err := s.launchCommand(args, "Поиск завершён"); err != nil {
 		s.setFinished("Не удалось запустить агент", err.Error())
 		writeError(w, http.StatusInternalServerError, err.Error())

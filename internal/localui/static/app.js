@@ -227,6 +227,8 @@ profileForm.addEventListener("submit", async (event) => {
 
 $("#auto-apply").addEventListener("change", (event) => {
   applyNote.hidden = !event.target.checked;
+  $("#application-target").disabled = !event.target.checked;
+  $("#application-target-hint").textContent = event.target.checked ? "От 1 до 100. Агент остановится после нужного числа успешных откликов. Если подходящих вакансий меньше, покажет недобор." : "Включите «Отправлять отклики», чтобы задать количество. Поиск без отправки остаётся доступным.";
 });
 
 taskForm.addEventListener("submit", async (event) => {
@@ -247,6 +249,7 @@ taskForm.addEventListener("submit", async (event) => {
         task: $("#task").value,
         areaId: Number(areaIDField.value || 0),
         autoApply: $("#auto-apply").checked,
+        applicationTarget: $("#auto-apply").checked ? Number($("#application-target").value) : 0,
         visible: $("#visible-browser").checked,
       }),
     });

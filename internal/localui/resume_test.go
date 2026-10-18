@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mihnpro/Ai_agent_2/internal/types"
 	playwright "github.com/mxschmitt/playwright-go"
@@ -128,6 +129,13 @@ func TestResumeBrowserPreview(t *testing.T) {
 	mux.HandleFunc("POST /api/resume", s.handleUploadResume)
 	mux.HandleFunc("POST /api/resume/confirm", s.handleConfirmResume)
 	mux.HandleFunc("GET /api/profile/details", s.handleProfileDetails)
+	tasks := make(chan taskInput, 1)
+	mux.HandleFunc("POST /api/run", func(w http.ResponseWriter, r *http.Request) {
+		var input taskInput
+		json.NewDecoder(r.Body).Decode(&input)
+		tasks <- input
+		writeJSON(w, http.StatusAccepted, map[string]string{"status": "test only"})
+	})
 	web := httptest.NewServer(mux)
 	defer web.Close()
 	pw, err := playwright.Run()
@@ -148,6 +156,29 @@ func TestResumeBrowserPreview(t *testing.T) {
 	page.OnPageError(func(err error) { errors = append(errors, err.Error()) })
 	if _, err := page.Goto(web.URL); err != nil {
 		t.Fatal(err)
+	}
+	if disabled, err := page.Locator("#application-target").IsDisabled(); err != nil || !disabled {
+		t.Fatal("target enabled while auto-apply is off", err)
+	}
+	if err := page.Locator("label.apply-toggle").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#application-target").Fill("7"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#task").Fill("ML Engineer"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#run-button").Click(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case task := <-tasks:
+		if task.ApplicationTarget != 7 || !task.AutoApply {
+			t.Fatal(task)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("count was not passed by UI")
 	}
 	if err := page.Locator("#open-resume").Click(); err != nil {
 		t.Fatal(err)

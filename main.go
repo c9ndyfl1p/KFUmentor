@@ -44,6 +44,7 @@ func main() {
 	var headless bool
 	var debug bool
 	var autoApply bool
+	var applicationTarget int
 	var profileDir string
 	var modelURL string
 	var modelName string
@@ -58,6 +59,7 @@ func main() {
 	flag.BoolVar(&headless, "headless", true, "Run browser in headless mode")
 	flag.BoolVar(&debug, "debug", false, "Enable debug mode")
 	flag.BoolVar(&autoApply, "auto-apply", false, "Auto apply to suitable jobs")
+	flag.IntVar(&applicationTarget, "application-target", types.DefaultApplicationTarget, "Desired successful applications (1–100)")
 	flag.StringVar(&profileDir, "profile", filepath.Join(os.Getenv("HOME"), ".ai-job-agent", "profile"), "Browser profile directory")
 	flag.StringVar(&modelURL, "model-url", "http://localhost:11434", "Ollama model URL")
 	flag.StringVar(&modelName, "model", "qwen2.5:7b", "Model name for Ollama")
@@ -78,6 +80,10 @@ func main() {
 		cfg.Headless = headless
 		cfg.Debug = debug
 		cfg.AutoApply = autoApply
+		if applicationTarget < 1 || applicationTarget > types.MaxApplicationTarget {
+			log.Fatalf("Количество откликов должно быть от 1 до %d", types.MaxApplicationTarget)
+		}
+		cfg.ApplicationTarget = applicationTarget
 		if profileDir != "" {
 			cfg.ProfileDir = profileDir
 		}
