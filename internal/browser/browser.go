@@ -317,56 +317,11 @@ func verifyAndHandleLogin(page playwright.Page, headless bool, profileDir string
 }
 
 func extractQueryFromTask(task string) string {
-	stopPhrases := []string{
-		"найди", "найти", "ищи", "поищи", "подходящие",
-		"подходящих", "подходящую", "подходящие", "подходящая",
-		"вакансии", "вакансий", "вакансию", "вакансия",
-		"на hh", "на hh.ru", "hh.ru", "hh", "headhunter",
-		"3", "4", "5", "несколько", "несколько", "вакансий",
+	queries := fallbackSearchQueries(task)
+	if len(queries) == 0 {
+		return ""
 	}
-
-	query := strings.ToLower(task)
-	re := regexp.MustCompile(`\d+\s+подходящие\s+`)
-	query = re.ReplaceAllString(query, "")
-	re = regexp.MustCompile(`\d+\s+подходящих\s+`)
-	query = re.ReplaceAllString(query, "")
-
-	for _, phrase := range stopPhrases {
-		query = strings.ReplaceAll(query, " "+phrase+" ", " ")
-		query = strings.ReplaceAll(query, phrase+" ", " ")
-		query = strings.ReplaceAll(query, " "+phrase, " ")
-		query = strings.ReplaceAll(query, phrase, " ")
-	}
-
-	query = strings.TrimSpace(query)
-	query = strings.Trim(query, ".,!?;:-")
-	re = regexp.MustCompile(`\s*\.\w{2,}\s*`)
-	query = re.ReplaceAllString(query, " ")
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return "AI инженер"
-	}
-
-	words := strings.Fields(query)
-	for i, word := range words {
-		if len(word) > 0 {
-			r := []rune(word)
-			if len(r) > 0 {
-				if (r[0] >= 'а' && r[0] <= 'я') || (r[0] >= 'А' && r[0] <= 'Я') {
-					if r[0] >= 'а' && r[0] <= 'я' {
-						r[0] = r[0] - ('а' - 'А')
-					}
-				} else {
-					if r[0] >= 'a' && r[0] <= 'z' {
-						r[0] = r[0] - ('a' - 'A')
-					}
-				}
-				words[i] = string(r)
-			}
-		}
-	}
-
-	return strings.Join(words, " ")
+	return queries[0]
 }
 
 const defaultHHArea = 113

@@ -6,27 +6,32 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mihnpro/Ai_agent_2/internal/llm"
+	agentprompt "github.com/mihnpro/Ai_agent_2/internal/prompt"
 	"github.com/mihnpro/Ai_agent_2/internal/types"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
 type AIOrchestrator struct {
-	llmClient         *llm.OllamaClient
-	page              playwright.Page
-	context           playwright.BrowserContext
-	debug             bool
-	currentTask       string
-	actionHistory     []map[string]interface{}
-	resume            types.Resume
-	autoApply         bool
-	areaID            int
-	lastEvaluatedJobs []types.Job
+	searchGroups       [][]types.Job
+	letterExamplesPath string
+	jobDetails         map[string]types.Job
+	llmClient          *llm.OllamaClient
+	page               playwright.Page
+	context            playwright.BrowserContext
+	debug              bool
+	currentTask        string
+	actionHistory      []map[string]interface{}
+	resume             types.Resume
+	autoApply          bool
+	areaID             int
+	lastEvaluatedJobs  []types.Job
 }
 
 type AIAction struct {
@@ -51,12 +56,14 @@ func CreateLLMOrchestrator(modelURL, modelName, resumePath string, page playwrig
 	resume := loadResume(resumePath)
 
 	return &AIOrchestrator{
-		llmClient:     client,
-		page:          page,
-		context:       ctx,
-		debug:         debug,
-		actionHistory: []map[string]interface{}{},
-		resume:        resume,
+		llmClient:          client,
+		page:               page,
+		context:            ctx,
+		debug:              debug,
+		actionHistory:      []map[string]interface{}{},
+		resume:             resume,
+		letterExamplesPath: filepath.Join(filepath.Dir(resumePath), "cover-letter-examples.local.json"),
+		jobDetails:         map[string]types.Job{},
 	}
 }
 
@@ -67,6 +74,9 @@ func (a *AIOrchestrator) ExecuteTask(task string, autoApply bool) (string, error
 	}
 	a.autoApply = autoApply
 	a.currentTask = task
+	if strings.TrimSpace(a.resume.Summary) == "" && len(a.resume.Skills) == 0 && len(a.resume.Experience) == 0 {
+		log.Println("⚠️ Профиль пуст: заполните и сохраните его в панели для оценки соответствия и персональных писем")
+	}
 
 	plan, err := a.createPlan(task, autoApply)
 	if err != nil {
@@ -86,18 +96,30 @@ func (a *AIOrchestrator) ExecuteTask(task string, autoApply bool) (string, error
 }
 
 func (a *AIOrchestrator) createPlan(task string, autoApply bool) ([]AIAction, error) {
-	query := extractQueryFromTask(task)
+	if strings.TrimSpace(task) == "" {
+		return nil, fmt.Errorf("укажите профессию или задачу поиска")
+	}
+	queries := a.searchQueries(task)
+	if len(queries) == 0 {
+		return nil, fmt.Errorf("не удалось определить профессию: уточните задачу")
+	}
 	count := 5
-	if match := regexp.MustCompile(`(?i)\b(\d{1,2})\b`).FindStringSubmatch(task); len(match) == 2 {
+	if match := regexp.MustCompile(`(?i)(\d{1,2})\s+(?:подходящ\p{L}*\s+)?ваканси\p{L}*`).FindStringSubmatch(task); len(match) == 2 {
 		if parsed, err := strconv.Atoi(match[1]); err == nil && parsed > 0 {
 			count = min(parsed, 20)
 		}
 	}
-	plan := []AIAction{
-		{Action: "search", Parameters: map[string]interface{}{"query": query}, Reason: "Искать вакансии по запросу"},
-		{Action: "extract_jobs", Parameters: map[string]interface{}{"count": float64(count)}, Reason: fmt.Sprintf("Извлечь до %d вакансий", count)},
-		{Action: "evaluate_jobs", Parameters: map[string]interface{}{}, Reason: "Оценить найденные вакансии по профилю"},
+	a.lastEvaluatedJobs = nil
+	a.searchGroups = nil
+	plan := make([]AIAction, 0, 2*len(queries)+2)
+	for _, query := range queries {
+		plan = append(plan,
+			AIAction{Action: "search", Parameters: map[string]interface{}{"query": query}, Reason: "Поиск: " + query},
+			AIAction{Action: "extract_jobs", Parameters: map[string]interface{}{"count": float64(count)}, Reason: "Собрать вакансии без повторов"},
+		)
 	}
+	plan = append(plan, AIAction{Action: "evaluate_jobs", Parameters: map[string]interface{}{"count": float64(count)}, Reason: "Оценить вакансии по описанию и профилю"})
+
 	if autoApply {
 		plan = append(plan, AIAction{Action: "apply_to_relevant", Parameters: map[string]interface{}{}, Reason: "Подготовить отклики на подходящие вакансии"})
 	}
@@ -115,12 +137,11 @@ func (a *AIOrchestrator) executePlan(plan []AIAction) (string, error) {
 			log.Printf("⚠️ Ошибка на шаге %d: %v", i+1, err)
 			results = append(results, fmt.Sprintf("❌ Шаг %d: %s - Ошибка: %v",
 				i+1, action.Reason, err))
-			// A failed search leaves the previous page open. Never extract jobs
-			// from that page or continue toward applications after navigation fails.
-			if action.Action == "search" {
-				return strings.Join(results, "\n"), err
+			if action.Action == "extract_jobs" {
+				continue
 			}
-			continue
+			// Do not evaluate a stale results page after a failed search.
+			return strings.Join(results, "\n"), err
 		}
 
 		// Записываем в историю
@@ -166,10 +187,14 @@ func (a *AIOrchestrator) executeAction(action AIAction) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		a.lastEvaluatedJobs = jobs
-		return fmt.Sprintf("Извлечено %d вакансий", len(jobs)), nil
+		a.searchGroups = append(a.searchGroups, jobs)
+		a.lastEvaluatedJobs = mergeJobs(a.lastEvaluatedJobs, jobs)
+		return fmt.Sprintf("Извлечено %d вакансий, всего уникальных: %d", len(jobs), len(a.lastEvaluatedJobs)), nil
 
 	case "evaluate_jobs":
+		if count, ok := action.Parameters["count"].(float64); ok && count > 0 {
+			a.lastEvaluatedJobs = selectSearchResults(a.searchGroups, int(count))
+		}
 		return a.evaluateAllJobsOnPage()
 
 	case "apply_to_relevant":
@@ -235,7 +260,7 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 
 		a.printJobAnalysis(job, evaluation)
 
-		shouldApply := evaluation.IsRelevant && evaluation.MatchScore >= 7
+		shouldApply := evaluation.IsRelevant && evaluation.MatchScore >= 7 && evaluation.Recommendation == "apply"
 
 		if shouldApply {
 			log.Printf("✅ Решение: откликнуться (оценка: %d/10)", evaluation.MatchScore)
@@ -306,25 +331,18 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 
 	time.Sleep(2 * time.Second)
 
-	title, _ := page.Locator("h1").First().TextContent()
-	companyLocator := page.Locator("[data-qa='vacancy-company-name'], .vacancy-company-name")
-	company, _ := companyLocator.First().TextContent()
-	vacancyDescription := job.Snippet
-	for _, selector := range []string{"[data-qa='vacancy-description']", ".vacancy-description"} {
-		loc := page.Locator(selector).First()
-		if count, _ := loc.Count(); count > 0 {
-			if content, err := loc.InnerText(); err == nil && strings.TrimSpace(content) != "" {
-				vacancyDescription = content
-				break
-			}
-		}
-	}
-	vacancyDescription = truncateRunes(strings.Join(strings.Fields(vacancyDescription), " "), 1800)
-
-	coverLetter, err := a.generateCoverLetter(title, company, vacancyDescription)
+	detailed, err := readJobDetails(page, job)
 	if err != nil {
-		log.Printf("⚠️ Не удалось сгенерировать письмо: %v", err)
-		coverLetter = "Здравствуйте! Заинтересован(а) в этой вакансии. Готов(а) обсудить детали. С уважением."
+		return "", err
+	}
+	if a.jobDetails == nil {
+		a.jobDetails = map[string]types.Job{}
+	}
+	a.jobDetails[job.URL] = detailed
+	title, company := detailed.Title, detailed.Company
+	coverLetter, err := a.generateCoverLetter(title, company, detailed)
+	if err != nil {
+		return "", fmt.Errorf("письмо не подготовлено, отклик отменён: %w", err)
 	}
 	log.Printf("✉️ Сопроводительное письмо:\n%s", coverLetter)
 
@@ -596,50 +614,24 @@ func (a *AIOrchestrator) printJobAnalysis(job types.Job, evaluation *JobEvaluati
 }
 
 func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask string) (*JobEvaluationResult, error) {
+	detailed, err := a.loadJobDetails(job)
+	if err != nil {
+		return nil, err
+	}
+	job = detailed
 
-	prompt := fmt.Sprintf(`Проанализируй вакансию и дай развернутый анализ.
+	profile := a.resume
+	profile.ContactInfo = types.Contact{}
+	data, err := json.Marshal(struct {
+		Task    string       `json:"task"`
+		Resume  types.Resume `json:"resume"`
+		Vacancy types.Job    `json:"vacancy"`
+	}{userTask, profile, job})
+	if err != nil {
+		return nil, err
+	}
+	response, err := a.llmClient.GenerateJSON(string(data), agentprompt.EvaluationSystem)
 
-ЗАДАЧА ПОЛЬЗОВАТЕЛЯ: "%s"
-
-ИНФОРМАЦИЯ О ВАКАНСИИ:
-- Должность: %s
-- Компания: %s
-- Описание: %s
-
-Информация из резюме кандидата:
-- Позиция: %s
-- Навыки: %s
-- Опыт: %s
-
-ПРОАНАЛИЗИРУЙ ПО КРИТЕРИЯМ:
-1. Соответствие должности запросу пользователя
-2. Соответствие требуемых навыков навыкам кандидата
-3. Уровень опыта (junior/middle/senior)
-4. Зарплатные ожидания (если указана зарплата)
-5. Локация и формат работы (офис/удаленка)
-6. Плюсы и минусы вакансии
-
-ВЕРНИ ОТВЕТ В ФОРМАТЕ JSON:
-{
-    "is_relevant": true/false,
-    "reason": "краткое обоснование релевантности",
-    "match_score": число от 1 до 10,
-    "recommendation": "apply/skip/review",
-    "analysis": "развернутый анализ на 3-4 предложения",
-    "skills_match": ["Python", "Django", "SQL"],
-    "requirements": ["Опыт работы 2+ года", "Знание Python"]
-}
-
-Важно: Будь конкретен и объективен в анализе.`,
-		userTask,
-		job.Title,
-		job.Company,
-		truncate(job.Snippet, 500),
-		a.resume.Title,
-		strings.Join(a.resume.Skills, ", "),
-		formatExperience(a.resume.Experience))
-
-	response, err := a.llmClient.GenerateJSON(prompt, "Ты эксперт по анализу вакансий. Будь объективен, не придумывай факты и верни JSON-объект требуемой структуры.")
 	if err != nil {
 		return nil, fmt.Errorf("ошибка генерации анализа: %w", err)
 	}
@@ -649,22 +641,28 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 		return nil, fmt.Errorf("ошибка парсинга JSON: %w\nОтвет: %s", err, response)
 	}
 
+	if result.MatchScore < 1 || result.MatchScore > 10 {
+		return nil, fmt.Errorf("некорректная оценка модели")
+	}
+	if result.Recommendation != "apply" && result.Recommendation != "skip" && result.Recommendation != "review" {
+		return nil, fmt.Errorf("некорректная рекомендация модели")
+	}
 	return &result, nil
 }
 
 func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 	log.Println("🧠 Начинаю анализ всех вакансий на странице...")
 
-	jobs, err := a.extractJobsFromPage(10)
-	if err != nil {
-		return "", fmt.Errorf("не удалось извлечь вакансии: %w", err)
+	jobs := a.lastEvaluatedJobs
+	if len(jobs) == 0 {
+		return "", fmt.Errorf("нет вакансий для оценки")
 	}
 
 	log.Printf("📊 Найдено %d вакансий для анализа", len(jobs))
 
 	var evaluations []string
 	relevantCount := 0
-
+	analyzedCount := 0
 	for i, job := range jobs {
 		log.Printf("🔍 Анализ вакансии %d/%d: %s", i+1, len(jobs), job.Title)
 
@@ -675,6 +673,11 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 			continue
 		}
 
+		analyzedCount++
+		if detailed, ok := a.jobDetails[job.URL]; ok {
+			job = detailed
+			jobs[i] = job
+		}
 		status := "⏭️"
 		if evaluation.IsRelevant {
 			status = "✅"
@@ -684,14 +687,23 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 		evaluations = append(evaluations, fmt.Sprintf("%s %s | %s | Оценка: %d/10 | %s",
 			status, job.Title, job.Company, evaluation.MatchScore, evaluation.Reason))
 
-		a.lastEvaluatedJobs = jobs
-
+		if evaluation.IsRelevant {
+			letter, err := a.generateCoverLetter(job.Title, job.Company, job)
+			if err != nil {
+				log.Printf("⚠️ Черновик письма не подготовлен: %v", err)
+			} else {
+				log.Printf("✉️ Черновик для «%s» (отдельно не отправлен):\n%s", job.Title, letter)
+			}
+		}
 		time.Sleep(1 * time.Second)
 	}
 
+	if analyzedCount == 0 {
+		return "", fmt.Errorf("не удалось оценить ни одной вакансии; проверьте модель и доступность описаний")
+	}
 	result := fmt.Sprintf("\n📊 РЕЗУЛЬТАТЫ АНАЛИЗА\n%s\nПроанализировано: %d вакансий\nРелевантных: %d\n\n%s",
 		strings.Repeat("=", 50),
-		len(jobs),
+		analyzedCount,
 		relevantCount,
 		strings.Join(evaluations, "\n"))
 
@@ -709,79 +721,6 @@ func getRecommendationText(rec string) string {
 	default:
 		return rec
 	}
-}
-
-func (a *AIOrchestrator) generateCoverLetter(title, company, vacancyDescription string) (string, error) {
-	profileSummary := cleanProfileText(a.resume.Summary)
-	skills := cleanProfileSkills(a.resume.Skills)
-	// The configured local model can produce fluent-sounding but invented
-	// claims despite strict instructions. For an outgoing application message,
-	// prefer a short deterministic draft built only from the saved profile and
-	// the vacancy facts we extracted from hh.ru.
-	letter := buildCoverLetterFallback(title, company, vacancyDescription, skills, profileSummary)
-	log.Println("✉️ Сопроводительное составлено по фактам из профиля без неподтверждённых утверждений модели")
-	return letter, nil
-}
-
-func buildCoverLetterFallback(title, company, description string, skills []string, summary string) string {
-	opening := "Меня заинтересовала вакансия «" + strings.TrimSpace(title) + "»"
-	if company = strings.TrimSpace(company); company != "" {
-		opening += " в компании «" + company + "»"
-	}
-	parts := []string{"Здравствуйте! " + opening + "."}
-
-	matchedSkills := make([]string, 0, len(skills))
-	for _, skill := range skills {
-		pattern := `(?i)(^|[^\p{L}\p{N}])` + regexp.QuoteMeta(skill) + `($|[^\p{L}\p{N}])`
-		if matched, _ := regexp.MatchString(pattern, description); matched {
-			matchedSkills = append(matchedSkills, skill)
-		}
-	}
-	if len(matchedSkills) > 0 {
-		parts = append(parts, "В профиле указаны навыки "+strings.Join(matchedSkills, ", ")+", которые также требуются в вакансии.")
-	} else if summary != "" && summary != "не указано" {
-		candidateFacts := firstSentences(summary, 2)
-		sentences := strings.SplitN(candidateFacts, ".", 2)
-		first := strings.TrimSpace(sentences[0])
-		if first != "" && !strings.HasPrefix(strings.ToLower(first), "я ") {
-			first = "Я — " + lowerFirstRune(first)
-		}
-		candidateFacts = first
-		if len(sentences) > 1 {
-			candidateFacts += ". " + strings.TrimSpace(sentences[1])
-		}
-		parts = append(parts, strings.TrimSpace(candidateFacts)+".")
-	}
-	parts = append(parts, "Буду рад обсудить, насколько мой текущий опыт соответствует задачам вакансии.")
-	return truncateRunes(strings.Join(parts, " "), 650)
-}
-
-func firstSentences(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	if value == "" || limit <= 0 {
-		return ""
-	}
-	var result []string
-	for _, part := range regexp.MustCompile(`[^.!?]+[.!?]?`).FindAllString(value, -1) {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		result = append(result, part)
-		if len(result) == limit {
-			break
-		}
-	}
-	return strings.Join(result, " ")
-}
-
-func lowerFirstRune(value string) string {
-	runes := []rune(strings.TrimSpace(value))
-	if len(runes) == 0 {
-		return ""
-	}
-	runes[0] = []rune(strings.ToLower(string(runes[0])))[0]
-	return string(runes)
 }
 
 func truncateRunes(value string, limit int) string {
@@ -892,7 +831,7 @@ func (a *AIOrchestrator) searchJobs(query string) (string, error) {
 	log.Printf("🔍 Поиск вакансий: %s", query)
 	areaID := a.areaID
 	if areaID == 0 {
-		areaID = hhAreaForText(query)
+		areaID = hhAreaForText(a.currentTask)
 	}
 	searchURL := fmt.Sprintf("https://hh.ru/search/vacancy?text=%s&area=%d", url.QueryEscape(query), areaID)
 
@@ -1197,4 +1136,52 @@ func cleanJobTitle(title string) string {
 	title = strings.ReplaceAll(title, "\t", " ")
 	title = regexp.MustCompile(`\s+`).ReplaceAllString(title, " ")
 	return strings.TrimSpace(title)
+}
+
+func buildCoverLetterFallback(title, company, description string, skills []string, summary string) string {
+	opening := "Меня заинтересовала вакансия «" + strings.TrimSpace(title) + "»"
+	if company = strings.TrimSpace(company); company != "" {
+		opening += " в компании «" + company + "»"
+	}
+	parts := []string{"Здравствуйте! " + opening + "."}
+
+	matchedSkills := make([]string, 0, len(skills))
+	for _, skill := range skills {
+		pattern := `(?i)(^|[^\p{L}\p{N}])` + regexp.QuoteMeta(skill) + `($|[^\p{L}\p{N}])`
+		if matched, _ := regexp.MatchString(pattern, description); matched {
+			matchedSkills = append(matchedSkills, skill)
+		}
+	}
+	if len(matchedSkills) > 0 {
+		parts = append(parts, "В профиле указаны навыки "+strings.Join(matchedSkills, ", ")+", которые также требуются в вакансии.")
+	} else if summary != "" && summary != "не указано" {
+		candidateFacts := strings.TrimSpace(firstSentences(summary, 2))
+		if candidateFacts != "" {
+			if !strings.ContainsAny(candidateFacts[len(candidateFacts)-1:], ".!?") {
+				candidateFacts += "."
+			}
+			parts = append(parts, candidateFacts)
+		}
+	}
+	parts = append(parts, "Буду рад обсудить, насколько мой текущий опыт соответствует задачам вакансии.")
+	return truncateRunes(strings.Join(parts, " "), 650)
+}
+
+func firstSentences(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || limit <= 0 {
+		return ""
+	}
+	var result []string
+	for _, part := range regexp.MustCompile(`[^.!?]+[.!?]?`).FindAllString(value, -1) {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		result = append(result, part)
+		if len(result) == limit {
+			break
+		}
+	}
+	return strings.Join(result, " ")
 }

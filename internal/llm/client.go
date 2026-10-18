@@ -20,6 +20,7 @@ type GenerateRequest struct {
 	Model   string                 `json:"model"`
 	Prompt  string                 `json:"prompt"`
 	Stream  bool                   `json:"stream"`
+	Think   bool                   `json:"think"`
 	System  string                 `json:"system,omitempty"`
 	Format  string                 `json:"format,omitempty"`
 	Options map[string]interface{} `json:"options,omitempty"`
@@ -48,7 +49,7 @@ func NewOllamaClient(baseURL, modelName string) *OllamaClient {
 		BaseURL:   baseURL,
 		ModelName: modelName,
 		HTTPClient: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 180 * time.Second,
 		},
 	}
 }
@@ -90,6 +91,7 @@ func (c *OllamaClient) generateWithMaxTokens(prompt, systemPrompt, format string
 	options := map[string]interface{}{
 		"temperature": 0.2,
 		"top_p":       0.9,
+		"num_ctx":     8192,
 	}
 	if maxTokens > 0 {
 		options["num_predict"] = maxTokens

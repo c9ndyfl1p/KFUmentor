@@ -2,3 +2,6 @@
 data/resume.local.json
 .ai-job-agent/
 .DS_Store
+
+# Personal examples of cover letters
+data/cover-letter-examples.local.json
