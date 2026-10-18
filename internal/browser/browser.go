@@ -414,7 +414,7 @@ func RunTask(task string, cfg Config) error {
 		log.Println("🔮 Использую AI-агента для выполнения задачи")
 
 
-		orchestrator := CreateLLMOrchestrator(cfg.ModelURL, cfg.ModelName, page, ctx, cfg.Debug)
+		orchestrator := CreateLLMOrchestrator(cfg.ModelURL, cfg.ModelName, cfg.ResumePath, page, ctx, cfg.Debug)
 
 
 		result, err := orchestrator.ExecuteTask(task, cfg.AutoApply)

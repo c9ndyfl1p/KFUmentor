@@ -1,0 +1,4 @@
+# Local candidate data and browser session
+data/resume.local.json
+.ai-job-agent/
+.DS_Store

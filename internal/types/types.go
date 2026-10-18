@@ -19,22 +19,43 @@ type Config struct {
 	ModelURL   string
 	ModelName  string
 	MaxJobs    int
+	ResumePath string
 }
 
 type Resume struct {
-	Name        string   `json:"name"`
-	Title       string   `json:"title"`
-	Experience  []string `json:"experience"`
-	Skills      []string `json:"skills"`
-	Education   []string `json:"education"`
-	Summary     string   `json:"summary"`
-	ContactInfo Contact  `json:"contact_info"`
+	Name        string       `json:"name"`
+	Title       string       `json:"title"`
+	Experience  []Experience `json:"experience"`
+	Skills      []string     `json:"skills"`
+	Education   []Education  `json:"education"`
+	Languages   []Language   `json:"languages"`
+	Summary     string       `json:"summary"`
+	ContactInfo Contact      `json:"contact"`
+}
+
+type Experience struct {
+	Position         string   `json:"position"`
+	Company          string   `json:"company"`
+	Period           string   `json:"period"`
+	Responsibilities []string `json:"responsibilities"`
+}
+
+type Education struct {
+	Degree     string `json:"degree"`
+	University string `json:"university"`
+	Year       string `json:"year"`
+}
+
+type Language struct {
+	Language string `json:"language"`
+	Level    string `json:"level"`
 }
 
 type Contact struct {
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
 	LinkedIn string `json:"linkedin"`
+	GitHub   string `json:"github"`
 }
 
 type AgentAction struct {

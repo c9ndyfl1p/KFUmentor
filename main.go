@@ -23,6 +23,7 @@ func loadConfig() (types.Config, error) {
         ModelURL:   "http://localhost:11434",
         ModelName:  "qwen2.5:7b",
         MaxJobs:    3,
+        ResumePath: "data/resume.json",
     }
 
     data, err := os.ReadFile("config.yaml")
@@ -47,6 +48,7 @@ func main() {
     var modelURL string
     var modelName string
     var interactive bool
+    var resumePath string
 
     flag.StringVar(&task, "task", "", "Task for the agent")
     flag.BoolVar(&headless, "headless", true, "Run browser in headless mode")
@@ -56,6 +58,7 @@ func main() {
     flag.StringVar(&modelURL, "model-url", "http://localhost:11434", "Ollama model URL")
     flag.StringVar(&modelName, "model", "qwen2.5:7b", "Model name for Ollama")
     flag.BoolVar(&interactive, "interactive", false, "Interactive mode")
+    flag.StringVar(&resumePath, "resume", "data/resume.json", "Path to candidate profile JSON")
     flag.Parse()
 
     cfg, err := loadConfig()
@@ -75,6 +78,9 @@ func main() {
         }
         if modelName != "" {
             cfg.ModelName = modelName
+        }
+        if resumePath != "" {
+            cfg.ResumePath = resumePath
         }
     }
 

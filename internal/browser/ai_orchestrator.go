@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ type AIOrchestrator struct {
 	currentTask       string
 	actionHistory     []map[string]interface{}
 	resume            types.Resume
+	autoApply         bool
 	lastEvaluatedJobs []types.Job
 }
 
@@ -44,9 +46,9 @@ type JobEvaluationResult struct {
 }
 
 
-func CreateLLMOrchestrator(modelURL, modelName string, page playwright.Page, ctx playwright.BrowserContext, debug bool) *AIOrchestrator {
+func CreateLLMOrchestrator(modelURL, modelName, resumePath string, page playwright.Page, ctx playwright.BrowserContext, debug bool) *AIOrchestrator {
 	client := llm.NewOllamaClient(modelURL, modelName)
-	resume := loadResume()
+	resume := loadResume(resumePath)
 
 	return &AIOrchestrator{
 		llmClient:     client,
@@ -60,6 +62,10 @@ func CreateLLMOrchestrator(modelURL, modelName string, page playwright.Page, ctx
 
 func (a *AIOrchestrator) ExecuteTask(task string, autoApply bool) (string, error) {
 	log.Printf("🤖 AI Agent processing task: %s (autoApply: %v)", task, autoApply)
+	if autoApply && (strings.TrimSpace(a.resume.Name) == "" || strings.TrimSpace(a.resume.Title) == "" || len(a.resume.Skills) == 0) {
+		return "", fmt.Errorf("автоотклики требуют заполненного профиля кандидата: укажите name, title и skills в файле резюме")
+	}
+	a.autoApply = autoApply
 	a.currentTask = task
 
 	plan, err := a.createPlan(task, autoApply)
@@ -207,6 +213,9 @@ func (a *AIOrchestrator) executeAction(action AIAction) (string, error) {
 		return a.evaluateAllJobsOnPage()
 
 	case "apply_to_relevant":
+		if !a.autoApply {
+			return "Отклики не отправлялись: для отправки требуется явно включить --auto-apply", nil
+		}
 		return a.applyToRelevantJobs()
 
 	case "analyze_page":
@@ -524,7 +533,7 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 		truncate(job.Snippet, 500),
 		a.resume.Title,
 		strings.Join(a.resume.Skills, ", "),
-		strings.Join(a.resume.Experience, "; "))
+		formatExperience(a.resume.Experience))
 
 	response, err := a.llmClient.Generate(prompt, "Ты эксперт по анализу IT-вакансий. Давай детальный анализ с конкретными аргументами.")
 	if err != nil {
@@ -630,7 +639,7 @@ func (a *AIOrchestrator) generateCoverLetter(title, company string, job types.Jo
 		title, company,
 		a.resume.Name,
 		a.resume.Title,
-		strings.Join(a.resume.Experience, "; "),
+		formatExperience(a.resume.Experience),
 		strings.Join(a.resume.Skills, ", "))
 
 	letter, err := a.llmClient.Generate(prompt, "Ты пишешь сопроводительные письма для IT-специалистов. Будь кратким и конкретным.")
@@ -787,22 +796,26 @@ func (a *AIOrchestrator) handleGenericAction(actionName string, params map[strin
 }
 
 
-func loadResume() types.Resume {
-	return types.Resume{
-		Name:  "Иван Иванов",
-		Title: "AI Инженер / Python Разработчик",
-		Experience: []string{
-			"3 года опыта в машинном обучении",
-			"Разработка NLP моделей",
-			"Оптимизация алгоритмов",
-			"Проектирование ML систем",
-		},
-		Skills: []string{
-			"Python", "PyTorch", "TensorFlow", "Scikit-learn",
-			"Docker", "Kubernetes", "MLOps", "SQL",
-			"FastAPI", "Django", "Git", "Linux",
-		},
+func loadResume(path string) types.Resume {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("⚠️ Не удалось загрузить профиль кандидата %q: %v", path, err)
+		return types.Resume{}
 	}
+	var resume types.Resume
+	if err := json.Unmarshal(data, &resume); err != nil {
+		log.Printf("⚠️ Некорректный профиль кандидата %q: %v", path, err)
+		return types.Resume{}
+	}
+	return resume
+}
+
+func formatExperience(items []types.Experience) string {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		parts = append(parts, strings.TrimSpace(strings.Join([]string{item.Position, item.Company, item.Period, strings.Join(item.Responsibilities, ", ")}, " ")))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func (a *AIOrchestrator) GetActionHistory() []map[string]interface{} {
