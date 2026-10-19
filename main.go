@@ -20,8 +20,8 @@ func loadConfig() (types.Config, error) {
 		UseAI:      true,
 		AutoApply:  false,
 		ProfileDir: filepath.Join(os.Getenv("HOME"), ".ai-job-agent", "profile"),
-		ModelURL:   "http://localhost:11434",
-		ModelName:  "qwen2.5:1.5b",
+		ModelURL:   "http://127.0.0.1:8000/v1",
+		ModelName:  "deepseek-chat",
 		MaxJobs:    types.DefaultVacancyLimit,
 		ResumePath: "data/resume.json",
 	}
@@ -46,6 +46,7 @@ func main() {
 	var autoApply bool
 	var applicationTarget int
 	var vacancyLimit int
+	var minimumScore int
 	var profileDir string
 	var modelURL string
 	var modelName string
@@ -62,9 +63,10 @@ func main() {
 	flag.BoolVar(&autoApply, "auto-apply", false, "Auto apply to suitable jobs")
 	flag.IntVar(&applicationTarget, "application-target", types.DefaultApplicationTarget, "Desired successful applications (1–100)")
 	flag.IntVar(&vacancyLimit, "vacancy-limit", 0, "Maximum vacancies to inspect (1–100; defaults to config)")
+	flag.IntVar(&minimumScore, "min-score", types.DefaultMinimumScore, "Minimum match score to keep (1–10)")
 	flag.StringVar(&profileDir, "profile", filepath.Join(os.Getenv("HOME"), ".ai-job-agent", "profile"), "Browser profile directory")
-	flag.StringVar(&modelURL, "model-url", "http://localhost:11434", "Ollama model URL")
-	flag.StringVar(&modelName, "model", "qwen2.5:1.5b", "Model name for Ollama")
+	flag.StringVar(&modelURL, "model-url", "http://127.0.0.1:8000/v1", "OpenAI-compatible model URL")
+	flag.StringVar(&modelName, "model", "deepseek-chat", "Model name")
 	flag.BoolVar(&interactive, "interactive", false, "Interactive mode")
 	flag.StringVar(&resumePath, "resume", "data/resume.json", "Path to candidate profile JSON")
 	flag.BoolVar(&web, "web", false, "Start the local web interface")
@@ -96,6 +98,10 @@ func main() {
 			log.Fatalf("Лимит поиска вакансий должен быть от 1 до %d", types.MaxVacancyLimit)
 		}
 		cfg.MaxJobs = vacancyLimit
+		if minimumScore < 1 || minimumScore > types.MaxMatchScore {
+			log.Fatalf("Минимальная оценка должна быть от 0 до %d", types.MaxMatchScore)
+		}
+		cfg.MinimumScore = minimumScore
 		if profileDir != "" {
 			cfg.ProfileDir = profileDir
 		}

@@ -4,6 +4,8 @@ const DefaultApplicationTarget = 5
 const MaxApplicationTarget = 100
 const DefaultVacancyLimit = 5
 const MaxVacancyLimit = 100
+const DefaultMinimumScore = 7
+const MaxMatchScore = 10
 
 type Job struct {
 	Title       string `json:"title"`
@@ -25,6 +27,7 @@ type Config struct {
 	ModelName         string
 	AreaID            int
 	MaxJobs           int
+	MinimumScore      int
 	ApplicationTarget int
 	ResumePath        string
 }

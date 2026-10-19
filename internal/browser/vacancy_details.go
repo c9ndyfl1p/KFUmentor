@@ -64,7 +64,19 @@ func (a *AIOrchestrator) loadJobDetails(job types.Job) (types.Job, error) {
 	if _, err = page.Goto(job.URL, playwright.PageGotoOptions{
 		Timeout: playwright.Float(30000), WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	}); err != nil {
+		if captchaPresent(page) {
+			if captchaErr := a.waitForCaptcha(page); captchaErr != nil {
+				return job, captchaErr
+			}
+			return a.loadJobDetails(job)
+		}
 		return job, fmt.Errorf("загрузить описание вакансии: %w", err)
+	}
+	if err := a.handleCaptchaIfPresent(page); err != nil {
+		return job, err
+	}
+	if page.IsClosed() {
+		return a.loadJobDetails(job)
 	}
 	detailed, err := readJobDetails(page, job)
 	if err == nil {

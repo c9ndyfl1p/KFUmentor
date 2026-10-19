@@ -21,12 +21,19 @@ import (
 type AIOrchestrator struct {
 	applicationTarget  int
 	vacancyLimit       int
+	minimumScore       int
 	searchGroups       [][]types.Job
+	searchTerms        []string
+	vacanciesAnalyzed  int
 	letterExamplesPath string
 	jobDetails         map[string]types.Job
 	llmClient          *llm.OllamaClient
 	page               playwright.Page
 	context            playwright.BrowserContext
+	pw                 *playwright.Playwright
+	profileDir         string
+	headless           bool
+	onContextChanged   func(playwright.BrowserContext)
 	debug              bool
 	currentTask        string
 	actionHistory      []map[string]interface{}
@@ -150,6 +157,7 @@ func CreateLLMOrchestrator(modelURL, modelName, resumePath string, page playwrig
 		resume:             resume,
 		letterExamplesPath: filepath.Join(filepath.Dir(resumePath), "cover-letter-examples.local.json"),
 		jobDetails:         map[string]types.Job{},
+		minimumScore:       types.DefaultMinimumScore,
 	}
 }
 
@@ -204,13 +212,17 @@ func (a *AIOrchestrator) createPlan(task string, autoApply bool) ([]AIAction, er
 			count = min(parsed, count)
 		}
 	}
+	a.vacancyLimit = count
 	a.lastEvaluatedJobs = nil
 	a.searchGroups = nil
-	plan := make([]AIAction, 0, 2*len(queries)+2)
+	a.searchTerms = append([]string(nil), queries...)
+	a.vacanciesAnalyzed = 0
+	searchBatch := min(max(count*2, 20), types.MaxVacancyLimit)
+	plan := make([]AIAction, 0, 2*len(queries)+1)
 	for _, query := range queries {
 		plan = append(plan,
 			AIAction{Action: "search", Parameters: map[string]interface{}{"query": query}, Reason: "Поиск: " + query},
-			AIAction{Action: "extract_jobs", Parameters: map[string]interface{}{"count": float64(count)}, Reason: "Собрать вакансии без повторов"},
+			AIAction{Action: "extract_jobs", Parameters: map[string]interface{}{"count": float64(searchBatch)}, Reason: "Собрать вакансии без повторов"},
 		)
 	}
 	plan = append(plan, AIAction{Action: "evaluate_jobs", Parameters: map[string]interface{}{"count": float64(count)}, Reason: "Оценить вакансии по описанию и профилю"})
@@ -284,9 +296,11 @@ func (a *AIOrchestrator) executeAction(action AIAction) (string, error) {
 		return fmt.Sprintf("Извлечено %d вакансий, всего уникальных: %d", len(jobs), len(a.lastEvaluatedJobs)), nil
 
 	case "evaluate_jobs":
-		if count, ok := action.Parameters["count"].(float64); ok && count > 0 {
-			a.lastEvaluatedJobs = selectSearchResults(a.searchGroups, int(count))
+		candidateCount := 0
+		for _, group := range a.searchGroups {
+			candidateCount += len(group)
 		}
+		a.lastEvaluatedJobs = selectSearchResults(a.searchGroups, candidateCount)
 		return a.evaluateAllJobsOnPage()
 
 	case "apply_until_target":
@@ -424,7 +438,20 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	})
 	if err != nil {
-		return "", fmt.Errorf("не удалось перейти на вакансию: %w", err)
+		if captchaPresent(page) {
+			if captchaErr := a.waitForCaptcha(page); captchaErr != nil {
+				return "", captchaErr
+			}
+			page = a.page
+		} else {
+			return "", fmt.Errorf("не удалось перейти на вакансию: %w", err)
+		}
+	}
+	if err := a.handleCaptchaIfPresent(page); err != nil {
+		return "", err
+	}
+	if page.IsClosed() {
+		page = a.page
 	}
 
 	time.Sleep(2 * time.Second)
@@ -868,48 +895,140 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 	if result.Recommendation != "apply" && result.Recommendation != "skip" && result.Recommendation != "review" {
 		return nil, fmt.Errorf("некорректная рекомендация модели")
 	}
+	minimumScore := a.minimumScore
+	if minimumScore < 0 || minimumScore > types.MaxMatchScore {
+		minimumScore = types.DefaultMinimumScore
+	}
+	if result.MatchScore < minimumScore {
+		result.IsRelevant = false
+		result.Recommendation = "skip"
+		thresholdReason := fmt.Sprintf("Оценка %d/10 ниже установленного порога %d/10.", result.MatchScore, minimumScore)
+		if result.Reason != "" {
+			result.Reason += " "
+		}
+		result.Reason += thresholdReason
+	}
 	return &result, nil
 }
 
 func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
-	log.Println("🧠 Начинаю анализ всех вакансий на странице...")
-
-	jobs := a.lastEvaluatedJobs
-	if len(jobs) == 0 {
-		return "", fmt.Errorf("нет вакансий для оценки")
+	target := a.vacancyLimit
+	if target < 1 {
+		target = types.DefaultVacancyLimit
+	}
+	minimumScore := a.minimumScore
+	if minimumScore < 0 || minimumScore > types.MaxMatchScore {
+		minimumScore = types.DefaultMinimumScore
 	}
 
-	log.Printf("📊 Найдено %d вакансий для анализа", len(jobs))
+	candidates := append([]types.Job(nil), a.lastEvaluatedJobs...)
+	a.lastEvaluatedJobs = nil
+	if len(candidates) == 0 && len(a.searchTerms) == 0 {
+		return "", fmt.Errorf("нет вакансий для оценки")
+	}
+	log.Printf("🧠 Ищу %d вакансий с оценкой соответствия от %d/10", target, minimumScore)
+
+	scanBudget := min(max(target*10, 100), 1000)
+	batchSize := min(max(target, 20), types.MaxVacancyLimit)
+	seen := make(map[string]struct{}, scanBudget)
+	for _, job := range candidates {
+		seen[job.URL] = struct{}{}
+	}
+	pageNumbers := make([]int, len(a.searchTerms))
+	emptyPages := make([]int, len(a.searchTerms))
+	for i := range pageNumbers {
+		pageNumbers[i] = 1 // page 0 for each query was collected by the plan.
+	}
+	nextQuery := 0
+	loadNextPage := func() bool {
+		if len(a.searchTerms) == 0 {
+			return false
+		}
+		for tried := 0; tried < len(a.searchTerms); tried++ {
+			queryIndex := nextQuery % len(a.searchTerms)
+			nextQuery++
+			if emptyPages[queryIndex] >= 2 || pageNumbers[queryIndex] >= 25 {
+				continue
+			}
+			pageNumber := pageNumbers[queryIndex]
+			pageNumbers[queryIndex]++
+			if _, err := a.searchJobsPage(a.searchTerms[queryIndex], pageNumber); err != nil {
+				log.Printf("⚠️ Не удалось открыть страницу %d поиска «%s»: %v", pageNumber+1, a.searchTerms[queryIndex], err)
+				emptyPages[queryIndex]++
+				continue
+			}
+			jobs, err := a.extractJobsFromPage(batchSize)
+			if err != nil {
+				emptyPages[queryIndex]++
+				continue
+			}
+			fresh := make([]types.Job, 0, len(jobs))
+			for _, job := range jobs {
+				if job.URL == "" {
+					continue
+				}
+				if _, exists := seen[job.URL]; exists {
+					continue
+				}
+				seen[job.URL] = struct{}{}
+				fresh = append(fresh, job)
+			}
+			if len(fresh) == 0 {
+				emptyPages[queryIndex]++
+				continue
+			}
+			emptyPages[queryIndex] = 0
+			candidates = append(candidates, fresh...)
+			log.Printf("📄 Добавил %d новых вакансий со страницы %d поиска «%s»", len(fresh), pageNumber+1, a.searchTerms[queryIndex])
+			return true
+		}
+		return false
+	}
 
 	var evaluations []string
-	relevantCount := 0
+	qualifiedCount := 0
 	analyzedCount := 0
-	for i, job := range jobs {
-		log.Printf("🔍 Анализ вакансии %d/%d: %s | URL: %s", i+1, len(jobs), job.Title, job.URL)
-
+	nextCandidate := 0
+	for qualifiedCount < target && analyzedCount < scanBudget {
+		if nextCandidate >= len(candidates) && !loadNextPage() {
+			break
+		}
+		if nextCandidate >= len(candidates) {
+			continue
+		}
+		job := candidates[nextCandidate]
+		nextCandidate++
+		if !isRealVacancyURL(job.URL) {
+			continue
+		}
+		analyzedCount++
+		cardIndex := qualifiedCount + 1
+		log.Printf("🔍 Анализ вакансии %d/%d: %s | URL: %s", cardIndex, target, job.Title, job.URL)
+		log.Println("🧠 Запрашиваю анализ у AI модели...")
 		evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
 		if err != nil {
 			log.Printf("⚠️ Ошибка оценки: %v", err)
-			evaluations = append(evaluations, fmt.Sprintf("❌ %s: ошибка анализа", job.Title))
+			continue
+		}
+		if detailed, ok := a.jobDetails[job.URL]; ok {
+			job = detailed
+		}
+		a.lastEvaluatedJobs = append(a.lastEvaluatedJobs, job)
+		reason := strings.Join(strings.Fields(evaluation.Reason), " ")
+		log.Printf("✅ Оценка вакансии завершена: оценка: %d/10; рекомендация: %s; причина: %s", evaluation.MatchScore, evaluation.Recommendation, truncateRunes(reason, 240))
+		if evaluation.MatchScore < minimumScore {
+			log.Printf("⏭️ Решение: пропустить (оценка: %d/10 ниже порога %d/10)", evaluation.MatchScore, minimumScore)
+			time.Sleep(time.Second)
 			continue
 		}
 
-		analyzedCount++
-		if detailed, ok := a.jobDetails[job.URL]; ok {
-			job = detailed
-			jobs[i] = job
+		qualifiedCount++
+		status := "✅"
+		if !evaluation.IsRelevant {
+			status = "⏭️"
 		}
-		status := "⏭️"
-		if evaluation.IsRelevant {
-			status = "✅"
-			relevantCount++
-		}
-
 		evaluations = append(evaluations, fmt.Sprintf("%s %s | %s | Оценка: %d/10 | %s",
 			status, job.Title, job.Company, evaluation.MatchScore, evaluation.Reason))
-		reason := strings.Join(strings.Fields(evaluation.Reason), " ")
-		log.Printf("✅ Оценка вакансии завершена: оценка: %d/10; рекомендация: %s; причина: %s", evaluation.MatchScore, evaluation.Recommendation, truncateRunes(reason, 240))
-
 		if evaluation.IsRelevant {
 			letter, err := a.generateCoverLetter(job.Title, job.Company, job)
 			if err != nil {
@@ -918,18 +1037,17 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 				log.Printf("✉️ Черновик для «%s» (отдельно не отправлен):\n%s", job.Title, letter)
 			}
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Second)
 	}
-
+	a.vacanciesAnalyzed = analyzedCount
 	if analyzedCount == 0 {
 		return "", fmt.Errorf("не удалось оценить ни одной вакансии; проверьте модель и доступность описаний")
 	}
-	result := fmt.Sprintf("\n📊 РЕЗУЛЬТАТЫ АНАЛИЗА\n%s\nПроанализировано: %d вакансий\nРелевантных: %d\n\n%s",
-		strings.Repeat("=", 50),
-		analyzedCount,
-		relevantCount,
-		strings.Join(evaluations, "\n"))
-
+	result := fmt.Sprintf("\n📊 РЕЗУЛЬТАТЫ ПОИСКА\n%s\nПроверено: %d вакансий\nПодтверждено от %d/10: %d из %d\n\n%s",
+		strings.Repeat("=", 50), analyzedCount, minimumScore, qualifiedCount, target, strings.Join(evaluations, "\n"))
+	if qualifiedCount < target {
+		result += fmt.Sprintf("\nПодходящих вакансий найдено меньше цели: просмотрено до %d вакансий и страниц поиска.", analyzedCount)
+	}
 	return result, nil
 }
 
@@ -1048,7 +1166,7 @@ func (a *AIOrchestrator) generateFinalReport() string {
 		}
 	}
 
-	analyzedCount = len(a.lastEvaluatedJobs)
+	analyzedCount = a.vacanciesAnalyzed
 
 	report := fmt.Sprintf(`
 📋 ФИНАЛЬНЫЙ ОТЧЕТ ВЫПОЛНЕНИЯ ЗАДАЧИ
@@ -1079,7 +1197,16 @@ func (a *AIOrchestrator) navigate(url string) (string, error) {
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	})
 	if err != nil {
-		return "", fmt.Errorf("навигация не удалась: %w", err)
+		if captchaPresent(a.page) {
+			if captchaErr := a.waitForCaptcha(a.page); captchaErr != nil {
+				return "", captchaErr
+			}
+		} else {
+			return "", fmt.Errorf("навигация не удалась: %w", err)
+		}
+	}
+	if err := a.handleCaptchaIfPresent(a.page); err != nil {
+		return "", err
 	}
 
 	time.Sleep(2 * time.Second)
@@ -1107,7 +1234,16 @@ func (a *AIOrchestrator) searchJobsPage(query string, pageNumber int) (string, e
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	})
 	if err != nil {
-		return "", fmt.Errorf("ошибка перехода на страницу поиска: %w", err)
+		if captchaPresent(a.page) {
+			if captchaErr := a.waitForCaptcha(a.page); captchaErr != nil {
+				return "", captchaErr
+			}
+		} else {
+			return "", fmt.Errorf("ошибка перехода на страницу поиска: %w", err)
+		}
+	}
+	if err := a.handleCaptchaIfPresent(a.page); err != nil {
+		return "", err
 	}
 
 	time.Sleep(3 * time.Second)
@@ -1171,8 +1307,73 @@ func (a *AIOrchestrator) checkLogin() (string, error) {
 }
 
 func (a *AIOrchestrator) handleCaptcha() (string, error) {
-	log.Println("⚠️ Обнаружена CAPTCHA")
-	return "CAPTCHA обнаружена - требуется ручное вмешательство", nil
+	if !captchaPresent(a.page) {
+		return "Капча не обнаружена", nil
+	}
+	if err := a.waitForCaptcha(a.page); err != nil {
+		return "", err
+	}
+	return "Проверка пройдена, продолжаю работу", nil
+}
+
+func (a *AIOrchestrator) handleCaptchaIfPresent(page playwright.Page) error {
+	if !captchaPresent(page) {
+		return nil
+	}
+	return a.waitForCaptcha(page)
+}
+
+func (a *AIOrchestrator) waitForCaptcha(challengePage playwright.Page) error {
+	if challengePage == nil {
+		return fmt.Errorf("не удалось открыть страницу проверки")
+	}
+	challengeURL := challengePage.URL()
+	log.Println("CAPTCHA_REQUIRED: Пройдите капчу в окне браузера")
+
+	if a.headless {
+		// A headless window cannot be brought to the screen. Reopen the same
+		// persistent profile in headed mode at the challenge URL.
+		if err := a.context.Close(); err != nil {
+			return fmt.Errorf("не удалось открыть окно для прохождения капчи: %w", err)
+		}
+		visibleContext, err := createBrowserContext(a.pw, a.profileDir, false, a.debug)
+		if err != nil {
+			return fmt.Errorf("не удалось открыть окно для прохождения капчи: %w", err)
+		}
+		visiblePage, err := visibleContext.NewPage()
+		if err != nil {
+			_ = visibleContext.Close()
+			return fmt.Errorf("не удалось открыть страницу капчи: %w", err)
+		}
+		a.context = visibleContext
+		a.page = visiblePage
+		a.headless = false
+		if a.onContextChanged != nil {
+			a.onContextChanged(visibleContext)
+		}
+		if challengeURL != "" {
+			if _, err := visiblePage.Goto(challengeURL, playwright.PageGotoOptions{
+				Timeout: playwright.Float(30000), WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			}); err != nil {
+				if !captchaPresent(visiblePage) {
+					return fmt.Errorf("не удалось загрузить страницу капчи: %w", err)
+				}
+			}
+		}
+	} else {
+		_ = challengePage.BringToFront()
+	}
+
+	for {
+		if a.page.IsClosed() {
+			return fmt.Errorf("окно браузера закрыто до прохождения капчи")
+		}
+		if !captchaPresent(a.page) {
+			log.Println("CAPTCHA_RESOLVED: Проверка пройдена, продолжаю поиск")
+			return nil
+		}
+		time.Sleep(1500 * time.Millisecond)
+	}
 }
 
 func (a *AIOrchestrator) handleGenericAction(actionName string, params map[string]interface{}) (string, error) {

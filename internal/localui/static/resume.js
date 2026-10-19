@@ -200,7 +200,7 @@ $("#resume-upload-form").addEventListener("submit", async (event) => {
   uploadResumeButton.disabled = true;
   uploadResumeButton.textContent = "Разбираю…";
   const isJSON = /\.json$/i.test(resumeFile.files[0].name);
-  setMessage(resumeMessage, isJSON ? "Проверяю профиль…" : "Извлекаю текст и разбираю резюме локальной моделью. Это может занять до 3 минут…");
+  setMessage(resumeMessage, isJSON ? "Проверяю профиль…" : "Извлекаю текст и разбираю резюме с помощью ИИ. Это может занять до 3 минут…");
   try {
     const formData = new FormData();
     formData.append("resume", resumeFile.files[0]);

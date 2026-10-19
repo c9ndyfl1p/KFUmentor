@@ -10,6 +10,17 @@
  <script src="/static/resume.js" defer></script>
 </head>
 <body>
+  <dialog id="captcha-dialog" class="captcha-dialog" aria-labelledby="captcha-title" aria-describedby="captcha-description">
+    <div class="captcha-alert" role="alert">
+      <div class="captcha-alert-icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none"><path d="M24 5 42 38H6L24 5Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M24 17v10m0 5h.02" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      </div>
+      <p class="eyebrow">НУЖНО ВАШЕ ДЕЙСТВИЕ</p>
+      <h2 id="captcha-title">Пройдите капчу</h2>
+      <p id="captcha-description">Откройте окно hh.ru и завершите проверку. Поиск приостановлен и продолжится автоматически, когда капча будет пройдена.</p>
+      <span class="captcha-waiting"><span aria-hidden="true"></span>Жду завершения проверки</span>
+    </div>
+  </dialog>
   <header class="topbar">
     <a class="brand" href="/" aria-label="AI Job Agent — главная">
       <span class="brand-mark" aria-hidden="true">
@@ -72,12 +83,17 @@
               <div class="limit-field">
                 <label class="field-label" for="vacancy-limit">Лимит вакансий</label>
                 <input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint">
-                <small id="vacancy-limit-hint" class="city-hint">Сколько вакансий проверить</small>
+                <small id="vacancy-limit-hint" class="city-hint">Сколько подходящих вакансий найти</small>
               </div>
               <div class="limit-field">
                 <label class="field-label" for="application-target">Цель по откликам</label>
                 <input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint">
                 <small id="application-target-hint" class="city-hint">Доступно при включённых откликах</small>
+              </div>
+              <div class="limit-field">
+                <label class="field-label" for="minimum-score">Минимальная оценка соответствия</label>
+                <input id="minimum-score" name="minimumScore" type="number" min="0" max="10" step="1" value="7" required aria-describedby="minimum-score-hint">
+                <small id="minimum-score-hint" class="city-hint">0 — без порога; ниже выбранного — пропускать</small>
               </div>
             </div>
             <div id="apply-note" class="apply-note" hidden>Отклики отправляются от вашего аккаунта hh.ru. Проверьте профиль и убедитесь, что вы вошли в браузере.</div>

@@ -47,12 +47,18 @@ type ChatRequest struct {
 }
 
 func NewOllamaClient(baseURL, modelName string) *OllamaClient {
+	timeout := 180 * time.Second
+	if configured := strings.TrimSpace(os.Getenv("AI_JOB_AGENT_MODEL_TIMEOUT_SECONDS")); configured != "" {
+		if seconds, err := time.ParseDuration(configured + "s"); err == nil && seconds > 0 {
+			timeout = seconds
+		}
+	}
 	return &OllamaClient{
 		BaseURL:   baseURL,
 		ModelName: modelName,
 		APIKey:    os.Getenv("AI_JOB_AGENT_MODEL_API_KEY"),
 		HTTPClient: &http.Client{
-			Timeout: 180 * time.Second,
+			Timeout: timeout,
 		},
 	}
 }

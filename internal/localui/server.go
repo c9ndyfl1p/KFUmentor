@@ -41,6 +41,7 @@ type taskInput struct {
 	AutoApply         bool   `json:"autoApply"`
 	ApplicationTarget int    `json:"applicationTarget"`
 	VacancyLimit      int    `json:"vacancyLimit"`
+	MinimumScore      int    `json:"minimumScore"`
 	Visible           bool   `json:"visible"`
 }
 
@@ -62,11 +63,13 @@ type hrReplyInput struct {
 }
 
 type taskState struct {
-	Running   bool          `json:"running"`
-	Status    string        `json:"status"`
-	Cards     []vacancyCard `json:"cards"`
-	Output    string        `json:"output,omitempty"`
-	StartedAt *time.Time    `json:"startedAt,omitempty"`
+	Running      bool          `json:"running"`
+	Status       string        `json:"status"`
+	Captcha      bool          `json:"captchaRequired"`
+	MinimumScore int           `json:"minimumScore"`
+	Cards        []vacancyCard `json:"cards"`
+	Output       string        `json:"output,omitempty"`
+	StartedAt    *time.Time    `json:"startedAt,omitempty"`
 }
 
 type vacancyCard struct {
@@ -119,6 +122,7 @@ func Start(cfg types.Config, address string) error {
 	mux.HandleFunc("GET /api/profile/details", app.handleProfileDetails)
 	mux.HandleFunc("POST /api/hr/reply", app.handleDraftHRReply)
 	mux.HandleFunc("GET /api/state", app.handleState)
+	mux.HandleFunc("GET /api/deepseek/status", app.handleDeepSeekStatus)
 	mux.HandleFunc("POST /api/run", app.handleRun)
 	mux.HandleFunc("POST /api/login", app.handleLogin)
 	mux.HandleFunc("POST /api/deepseek/login", app.handleDeepSeekLogin)
@@ -406,6 +410,10 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := normalizeMinimumScore(&input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	profile, err := s.readProfile()
 	if err != nil {
@@ -421,6 +429,9 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "Задача уже выполняется")
 		return
 	}
+	s.mu.Lock()
+	s.state.MinimumScore = input.MinimumScore
+	s.mu.Unlock()
 
 	args := s.taskArguments(input)
 
@@ -488,6 +499,40 @@ func (s *server) handleDeepSeekLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Окно DeepSeek открыто для входа"})
+}
+
+func (s *server) handleDeepSeekStatus(w http.ResponseWriter, r *http.Request) {
+	apiKey := os.Getenv("AI_JOB_AGENT_MODEL_API_KEY")
+	if apiKey == "" {
+		writeJSON(w, http.StatusOK, map[string]bool{"captchaRequired": false})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 1800*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:8000/session/status", nil)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]bool{"captchaRequired": false})
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := (&http.Client{Timeout: 1800 * time.Millisecond}).Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]bool{"captchaRequired": false})
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		writeJSON(w, http.StatusOK, map[string]bool{"captchaRequired": false})
+		return
+	}
+	var status struct {
+		CaptchaRequired bool `json:"captcha_required"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&status); err != nil {
+		writeJSON(w, http.StatusOK, map[string]bool{"captchaRequired": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"captchaRequired": status.CaptchaRequired})
 }
 
 func (s *server) beginTask(status string) bool {
@@ -630,6 +675,16 @@ func (s *server) updateFromLog(line string) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if strings.Contains(message, "CAPTCHA_REQUIRED:") {
+		s.state.Captcha = true
+		s.state.Status = "Пройдите капчу в окне браузера"
+		return
+	}
+	if strings.Contains(message, "CAPTCHA_RESOLVED:") {
+		s.state.Captcha = false
+		s.state.Status = "Поиск продолжается"
+		return
+	}
 	if match := vacancyLogPattern.FindStringSubmatch(message); len(match) == 5 {
 		index, _ := strconv.Atoi(match[1])
 		total, _ := strconv.Atoi(match[2])
@@ -741,6 +796,7 @@ func (s *server) setFinished(status, detail string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state.Running = false
+	s.state.Captcha = false
 	s.activeCmd = nil
 	s.state.Status = status
 	if status == "Задача остановлена" {

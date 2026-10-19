@@ -26,6 +26,13 @@ func normalizeVacancyLimit(input *taskInput) error {
 	return nil
 }
 
+func normalizeMinimumScore(input *taskInput) error {
+	if input.MinimumScore < 0 || input.MinimumScore > types.MaxMatchScore {
+		return fmt.Errorf("минимальная оценка должна быть от 0 до %d", types.MaxMatchScore)
+	}
+	return nil
+}
+
 func (s *server) taskArguments(input taskInput) []string {
 	vacancyLimit := input.VacancyLimit
 	if vacancyLimit == 0 {
@@ -35,12 +42,14 @@ func (s *server) taskArguments(input taskInput) []string {
 	if applicationTarget == 0 {
 		applicationTarget = types.DefaultApplicationTarget
 	}
+	minimumScore := input.MinimumScore
 	args := []string{
 		"--task=" + input.Task,
 		"--headless=" + fmt.Sprint(!input.Visible),
 		"--auto-apply=" + fmt.Sprint(input.AutoApply),
 		"--application-target=" + fmt.Sprint(applicationTarget),
 		"--vacancy-limit=" + fmt.Sprint(vacancyLimit),
+		"--min-score=" + fmt.Sprint(minimumScore),
 		"--resume=" + localResumePath,
 		"--profile=" + s.cfg.ProfileDir,
 		"--model-url=" + s.cfg.ModelURL,

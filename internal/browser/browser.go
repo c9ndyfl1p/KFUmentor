@@ -106,7 +106,7 @@ func OpenLogin(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("could not open browser profile: %w", err)
 	}
-	defer ctx.Close()
+	defer func() { _ = ctx.Close() }()
 
 	page, err := ctx.NewPage()
 	if err != nil {
@@ -157,7 +157,7 @@ func RunTask(task string, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("could not create browser context: %w", err)
 	}
-	defer ctx.Close()
+	defer func() { _ = ctx.Close() }()
 
 	page, err := ctx.NewPage()
 	if err != nil {
@@ -192,9 +192,17 @@ func RunTask(task string, cfg Config) error {
 		log.Println("🔮 Использую AI-агента для выполнения задачи")
 
 		orchestrator := CreateLLMOrchestrator(cfg.ModelURL, cfg.ModelName, cfg.ResumePath, page, ctx, cfg.Debug)
+		orchestrator.pw = pw
+		orchestrator.profileDir = cfg.ProfileDir
+		orchestrator.headless = cfg.Headless
+		orchestrator.onContextChanged = func(updated playwright.BrowserContext) {
+			ctx = updated
+			page = orchestrator.page
+		}
 		orchestrator.areaID = cfg.AreaID
 		orchestrator.applicationTarget = cfg.ApplicationTarget
 		orchestrator.vacancyLimit = cfg.MaxJobs
+		orchestrator.minimumScore = cfg.MinimumScore
 
 		result, err := orchestrator.ExecuteTask(task, cfg.AutoApply)
 		if err != nil {

@@ -43,7 +43,11 @@ achievements — личные достижения: конкурсы, олимп
 education — только учебные заведения, программы обучения, курсы и квалификации; конкурсы, олимпиады, хакатоны и награды сюда не помещай. languages — только явно указанные языки и уровни, contact — только контакты из текста.
 Если текущей или желаемой должности нет, оставь title пустым. Не придумывай её по навыкам.
 Для каждого заполненного раздела добавь evidence: section — название раздела из схемы, quote — точная цитата из исходного текста, подтверждающая факты.
-Не переписывай цитаты. Твоя задача — аккуратно перенести исходные сведения в поля; оценку кандидата не выполняй.`
+Не переписывай цитаты. Твоя задача — аккуратно перенести исходные сведения в поля; оценку кандидата не выполняй.
+
+Верни только один корректный JSON-объект без Markdown и любого текста вокруг. Используй точно такую структуру и все перечисленные поля:
+{"profile":{"name":"","title":"","summary":"","skills":[],"experience":[{"position":"","company":"","period":"","responsibilities":[]}],"projects":[{"name":"","description":"","technologies":[],"link":""}],"achievements":[{"name":"","result":"","date":"","organizer":"","link":""}],"education":[{"degree":"","university":"","year":""}],"languages":[{"language":"","level":""}],"contact":{"email":"","phone":"","linkedin":"","github":""}},"evidence":[{"section":"skills","quote":"точная цитата из резюме"}]}
+Если сведений для списка нет, верни пустой массив. Не добавляй ключи, которых нет в этой структуре.`
 
 func Parse(ctx context.Context, name string, data []byte, model Model) (Preview, error) {
 	if len(data) == 0 || len(data) > MaxFileBytes {
@@ -67,12 +71,12 @@ func Parse(ctx context.Context, name string, data []byte, model Model) (Preview,
 			return preview, err
 		}
 		if model == nil {
-			return preview, fmt.Errorf("локальная модель не настроена")
+			return preview, fmt.Errorf("модель ИИ не настроена")
 		}
 		request, _ := json.Marshal(map[string]string{"resume_text": text})
 		response, err := model.GenerateStructured(ctx, string(request), systemPrompt, ImportSchema())
 		if err != nil {
-			return preview, fmt.Errorf("не удалось разобрать резюме локальной моделью: %w", err)
+			return preview, fmt.Errorf("не удалось разобрать резюме с помощью ИИ: %w", err)
 		}
 		var result struct {
 			Profile  types.Resume `json:"profile"`
@@ -107,7 +111,7 @@ func Parse(ctx context.Context, name string, data []byte, model Model) (Preview,
 		if len(preview.Evidence) == 0 {
 			preview.Warnings = append(preview.Warnings, "Модель не предоставила проверяемые цитаты. Сверьте заполненные поля с исходным текстом.")
 		}
-		preview.Warnings = append(preview.Warnings, "Проверьте имена, даты, опыт и проекты: локальная модель может ошибиться при извлечении.")
+		preview.Warnings = append(preview.Warnings, "Проверьте имена, даты, опыт и проекты: ИИ может ошибиться при извлечении.")
 	}
 	if err := ValidateProfile(preview.Profile); err != nil {
 		return preview, err

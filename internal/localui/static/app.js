@@ -18,6 +18,23 @@ const cityHint = $("#city-hint");
 let citySearchTimer;
 let citySearchController;
 let activeCityOption = -1;
+let hhCaptchaRequired = false;
+let deepSeekCaptchaRequired = false;
+
+function syncCaptchaWarning() {
+  const dialog = $("#captcha-dialog");
+  const required = hhCaptchaRequired || deepSeekCaptchaRequired;
+  if (required && !dialog.open) dialog.showModal();
+  if (!required && dialog.open) dialog.close();
+  const description = $("#captcha-description");
+  if (hhCaptchaRequired && deepSeekCaptchaRequired) {
+    description.textContent = "Завершите проверку в окне hh.ru и в окне DeepSeek. Поиск продолжится автоматически после прохождения капч.";
+  } else if (deepSeekCaptchaRequired) {
+    description.textContent = "Завершите проверку в открытом окне DeepSeek. Запрос модели ждёт, а поиск продолжится автоматически после прохождения капчи.";
+  } else {
+    description.textContent = "Откройте окно hh.ru и завершите проверку. Поиск приостановлен и продолжится автоматически, когда капча будет пройдена.";
+  }
+}
 
 async function request(path, options = {}) {
   const headers = options.body instanceof FormData
@@ -44,19 +61,26 @@ function showActivityMessage(message = "", isError = false) {
   activityMessage.setAttribute("role", isError ? "alert" : "status");
 }
 
-function renderVacancyCards(cards, running) {
+function renderVacancyCards(cards, running, minimumScore = 0) {
   vacancyCards.replaceChildren();
-  if (!cards.length) {
+  const matchingCards = cards.filter((item) => item.score >= minimumScore);
+  if (!matchingCards.length) {
     const empty = document.createElement("p");
     empty.className = "activity-empty";
-    empty.textContent = running
-      ? "Ищу вакансии. Карточки появятся, когда агент начнёт их оценивать."
-      : "Здесь появятся карточки найденных вакансий.";
+    if (running && minimumScore > 0) {
+      empty.textContent = `Проверяю вакансии. Покажу только совпадения от ${minimumScore}/10.`;
+    } else if (running) {
+      empty.textContent = "Ищу вакансии. Карточки появятся, когда агент начнёт их оценивать.";
+    } else if (cards.length && minimumScore > 0) {
+      empty.textContent = `Пока нет вакансий с оценкой от ${minimumScore}/10. Попробуйте снизить порог или изменить запрос.`;
+    } else {
+      empty.textContent = "Здесь появятся карточки подходящих вакансий.";
+    }
     vacancyCards.append(empty);
     return;
   }
 
-  for (const item of cards) {
+  for (const item of matchingCards) {
     const card = document.createElement("article");
     card.className = "vacancy-progress-card";
     card.dataset.status = item.status || "running";
@@ -334,6 +358,7 @@ taskForm.addEventListener("submit", async (event) => {
         autoApply: $("#auto-apply").checked,
         applicationTarget: $("#auto-apply").checked ? Number($("#application-target").value) : 0,
         vacancyLimit: Number($("#vacancy-limit").value),
+        minimumScore: Number($("#minimum-score").value),
         visible: $("#visible-browser").checked,
       }),
     });
@@ -400,6 +425,8 @@ stopButton.addEventListener("click", async () => {
 
 async function refreshState() {
   const state = await request("/api/state");
+  hhCaptchaRequired = Boolean(state.captchaRequired);
+  syncCaptchaWarning();
   statusText.textContent = state.status || "Готов к поиску";
   statusChip.classList.toggle("is-running", Boolean(state.running));
   statusChip.classList.toggle("is-done", !state.running && state.status === "Поиск завершён");
@@ -412,11 +439,21 @@ async function refreshState() {
   stopButton.disabled = /останавливаю/i.test(state.status || "");
   stopButton.textContent = stopButton.disabled ? "Останавливаю…" : "Остановить";
 
-  renderVacancyCards(state.cards || [], Boolean(state.running));
+  renderVacancyCards(state.cards || [], Boolean(state.running), Number(state.minimumScore || 0));
 
   $("#activity-caption").textContent = state.startedAt
     ? `Последний запуск: ${new Date(state.startedAt).toLocaleString("ru-RU")}`
     : "Здесь появится статус и результат последнего запуска";
+}
+
+async function refreshDeepSeekStatus() {
+  try {
+    const state = await request("/api/deepseek/status");
+    deepSeekCaptchaRequired = Boolean(state.captchaRequired);
+  } catch {
+    deepSeekCaptchaRequired = false;
+  }
+  syncCaptchaWarning();
 }
 
 $("#clear-log").addEventListener("click", async () => {
@@ -432,3 +469,4 @@ refreshState().catch((error) => {
   showActivityMessage(error.message, true);
 });
 window.setInterval(() => refreshState().catch(() => {}), 1200);
+window.setInterval(() => refreshDeepSeekStatus(), 2000);
