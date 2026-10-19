@@ -863,23 +863,25 @@ h1, .overview-heading h1, .search-card h1, .profile-card h1 { color: #21352c; fo
 .mentor-hero-score > span { color: #ddc79e; font-size: 8px; font-weight: 700; letter-spacing: .1em; }
 .mentor-hero-score strong { color: #f7f1e6; font-family: Georgia, serif; font-size: 31px; font-weight: 500; }
 .mentor-hero-score small { color: #d5ddd5; font-size: 9px; line-height: 1.35; }
-.mentor-tabs { display: grid; grid-template-columns: 1.15fr 1fr 1fr; grid-template-rows: 128px 128px; gap: 10px; margin: 0; padding: 22px 24px 12px; overflow: visible; background: #f4f2ea; border: 0; border-radius: 0; }
+.mentor-tabs { display: grid; grid-template-columns: 1.15fr 1fr 1fr; grid-template-rows: 128px 128px; gap: 10px; margin: 0; padding: 22px 24px 12px; overflow: visible; background: var(--paper); border: 0; border-radius: 0; }
 .mentor-tabs button { position: relative; display: flex; min-width: 0; min-height: 0; align-items: flex-start; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 17px 19px; overflow: hidden; color: #283b31; background: #fffefa; border: 1px solid #e7e4da; border-radius: 14px; text-align: left; white-space: normal; transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease; }
 .mentor-tabs button:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgb(28 47 37 / 8%); }
 .mentor-tabs button[aria-selected="true"] { color: #f9f6ed; background: #285541; border-color: #285541; box-shadow: none; }
 .mentor-bento-assessment { grid-row: span 2; }
-.mentor-bento-plan { grid-column: span 2; background: #ebece3 !important; }
+.mentor-bento-plan { grid-column: auto; background: #ebece3 !important; }
 .mentor-bento-plan[aria-selected="true"] { background: #285541 !important; }
+.mentor-bento-questions { color: #283b31 !important; background: #f3e8d7 !important; }
+.mentor-bento-questions[aria-selected="true"] { color: #f9f6ed !important; background: #285541 !important; border-color: #285541; }
 .mentor-bento-practice { color: #283b31 !important; background: #e4eee5 !important; }
 .mentor-bento-interview { color: #283b31 !important; background: #f3e8d7 !important; }
 .mentor-tabs button.mentor-bento-practice[aria-selected="true"], .mentor-tabs button.mentor-bento-interview[aria-selected="true"] { color: #f9f6ed !important; background: #285541 !important; border-color: #285541; }
 .mentor-bento-label { color: #9b7951; font-size: 8px; font-weight: 750; letter-spacing: .11em; }
 .mentor-tabs button[aria-selected="true"] .mentor-bento-label { color: #dfbf8d; }
-.mentor-tabs button strong { max-width: calc(100% - 24px); color: inherit; font-family: Georgia, serif; font-size: clamp(17px, 1.8vw, 23px); font-weight: 500; line-height: 1.15; }
+.mentor-tabs button strong { max-width: calc(100% - 24px); min-width: 0; color: inherit; font-family: Georgia, serif; font-size: clamp(17px, 1.8vw, 23px); font-weight: 500; line-height: 1.15; overflow-wrap: anywhere; }
 .mentor-tabs button small { color: currentColor; opacity: .72; font-size: 10px; line-height: 1.35; }
 .mentor-bento-arrow { position: absolute; top: 15px; right: 16px; color: #9b7951; font-size: 15px; transition: transform 160ms ease; }
 .mentor-tabs button:hover .mentor-bento-arrow { transform: translate(2px, -2px); }
-.mentor-module, .mentor-search-links { margin: 10px 24px 16px; padding: 24px; background: #fffefa; border: 1px solid #e8e5dc; border-radius: 15px; }
+.mentor-module, .mentor-search-links { margin: 10px 24px 16px; padding: 24px; background: var(--paper); border: 1px solid #e8e5dc; border-radius: 15px; }
 .mentor-module[role="tabpanel"] { animation: panel-enter 180ms ease both; }
 .mentor-module-heading h3 { font-family: Georgia, serif; font-size: 25px; font-weight: 500; }
 .mentor-result { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 22px; background: #f5f4ec; border: 0; border-radius: 13px; }
@@ -930,9 +932,10 @@ h1, .overview-heading h1, .search-card h1, .profile-card h1 { color: #21352c; fo
 .profile-identity .section-kicker { color: #d7bd94; }
 .profile-identity h2 { margin: 6px 0 0; color: #faf7ed; font-family: Georgia, serif; font-size: clamp(26px, 3vw, 34px); font-weight: 500; letter-spacing: -.04em; overflow-wrap: anywhere; }
 .profile-identity-top p { margin: 2px 0 0; color: #dce3da; font-size: 13px; }
-.profile-view-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.profile-view-actions { display: flex; align-items: flex-end; flex-direction: column; justify-content: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .profile-view-actions .button { color: #f9f6ed; background: rgb(255 255 255 / 8%); border-color: rgb(255 255 255 / 25%); }
-.profile-view-actions .text-button { color: #e3c394; }
+.profile-view-actions .text-button { min-height: 44px; margin: 0; padding: 0 12px; color: #e3c394; border: 1px solid rgb(255 255 255 / 25%); border-radius: 10px; }
+.profile-view-actions .button, .profile-view-actions .text-button { flex: 0 1 auto; }
 .profile-preview-summary { max-width: 850px; margin: 20px 0; color: #e1e6df; font-family: Georgia, serif; font-size: 16px; line-height: 1.65; }
 .profile-skills-block { padding-top: 16px; border-top: 1px solid rgb(255 255 255 / 18%); }
 .profile-skills-block .section-kicker { display: block; margin-bottom: 10px; }
@@ -1001,9 +1004,8 @@ h1, .overview-heading h1, .search-card h1, .profile-card h1 { color: #21352c; fo
   .mentor-hero-score { min-width: 93px; padding: 10px; }
   .mentor-hero-score strong { font-size: 25px; }
   .mentor-hero-score small { font-size: 8px; }
-  .mentor-tabs { grid-template-columns: 1fr 1fr; grid-template-rows: 145px 110px 110px; gap: 8px; padding: 14px; }
+  .mentor-tabs { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 118px); gap: 8px; padding: 14px; }
   .mentor-bento-assessment { grid-row: span 2; }
-  .mentor-bento-plan { grid-column: span 2; }
   .mentor-tabs button { padding: 13px; }
   .mentor-tabs button strong { font-size: 17px; }
   .mentor-module, .mentor-search-links { margin: 0 14px 14px; padding: 16px; }
@@ -1059,4 +1061,63 @@ h1, .overview-heading h1, .search-card h1, .profile-card h1 { color: #21352c; fo
 .sidebar-version { color: #a9b8ac; }
 @media (max-width: 860px) {
   .topbar { background: rgb(23 61 48 / 97%); border-bottom-color: rgb(245 241 229 / 16%); }
+}
+
+.mentor-history-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; min-height: 64px; padding: 10px 24px; color: var(--muted); background: var(--paper); font-size: 12px; }
+.mentor-history-actions .button { min-height: 42px; }
+.mentor-critique-section { grid-column: 1 / -1; display: grid; gap: 10px; padding-top: 15px; border-top: 1px solid var(--line); }
+.mentor-critique-section > h4 { margin: 0; color: #8f2924; font-size: 15px; }
+.mentor-critique-intro { margin: -5px 0 2px; color: var(--muted); font-size: 12px; }
+.mentor-critique-card { padding: 14px 16px; background: #fff8f6; border: 1px solid #f0d0ca; border-left: 3px solid #c5443b; border-radius: 10px; }
+.mentor-critique-label { color: #8f2924; font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.mentor-critique-quote { margin: 8px 0 10px; padding: 9px 12px; color: #8f2924; background: #fde7e3; border-radius: 6px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mentor-critique-reason, .mentor-critique-fix { margin: 6px 0 0; color: var(--ink); font-size: 13px; line-height: 1.55; }
+.mentor-critique-fix { color: var(--muted); }
+.mentor-critique-fix::before { content: "Как улучшить: "; color: var(--green); font-weight: 700; }
+@media (max-width: 620px) {
+  .mentor-history-actions { align-items: flex-start; flex-direction: column; gap: 8px; padding: 13px 14px; }
+  .mentor-history-actions .button { align-self: flex-end; }
+  .profile-view-actions .button, .profile-view-actions .text-button { flex: 1 1 150px; }
+}
+
+@media (max-width: 600px) {
+  body { overflow-x: hidden; }
+  .topbar { gap: 5px 10px; padding: 7px 12px 6px; }
+  .primary-nav { scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+  .primary-nav a { min-height: 44px; scroll-snap-align: start; }
+  .page-shell { padding: 14px 10px 28px; }
+  .mentor-hero { display: flex; min-height: 0; align-items: stretch; flex-direction: column; gap: 15px; padding: 23px 19px 19px; }
+  .mentor-hero-copy { width: 100%; }
+  .mentor-hero .eyebrow { margin-bottom: 7px; }
+  .mentor-hero h2 { max-width: 100%; margin: 7px 0 9px; font-size: clamp(31px, 9vw, 38px); line-height: 1.08; letter-spacing: -.045em; }
+  .mentor-hero-copy > p:last-child { max-width: 100%; font-size: 12px; line-height: 1.55; }
+  .mentor-orbit { display: none; }
+  .mentor-hero-score { width: 100%; min-width: 0; gap: 4px; padding: 11px 13px; }
+  .mentor-hero-score strong { font-size: 27px; }
+  .mentor-hero-score small { font-size: 10px; }
+  .mentor-history-actions { align-items: stretch; padding: 12px 14px; }
+  .mentor-history-actions .button { align-self: stretch; width: 100%; min-height: 44px; }
+  .mentor-tabs { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(5, minmax(76px, auto)); gap: 7px; padding: 11px; }
+  .mentor-bento-assessment { grid-row: auto; }
+  .mentor-tabs button { min-height: 76px; justify-content: center; gap: 4px; padding: 11px 38px 11px 13px; border-radius: 11px; }
+  .mentor-tabs button strong { max-width: 100%; font-size: 18px; }
+  .mentor-tabs button small { max-width: 100%; font-size: 10px; }
+  .mentor-module, .mentor-search-links { margin: 0 8px 10px; padding: 14px; }
+  .mentor-module-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .mentor-module-heading h3 { font-size: 22px; }
+  .mentor-module-note { max-width: 100%; text-align: left; }
+  .mentor-form-footer { align-items: stretch; flex-direction: column; }
+  .mentor-form-footer .button { width: 100%; min-height: 44px; }
+  .mentor-intro { align-items: stretch; flex-direction: column; padding: 14px; }
+  .mentor-intro .button { width: 100%; min-height: 44px; }
+  .mentor-critique-card { padding: 12px; }
+  .mentor-critique-quote { font-size: 12px; }
+  .profile-card { padding: 19px 14px; }
+  .profile-editorial-heading h1 { font-size: 34px; }
+  .profile-identity { padding: 15px; }
+  .profile-card .profile-identity .profile-identity-top { align-items: stretch; }
+  .profile-card .profile-identity .profile-view-actions { display: flex; width: 100%; align-self: stretch; align-items: flex-end; flex-direction: column; gap: 8px; }
+  .profile-card .profile-identity .profile-view-actions > .button,
+  .profile-card .profile-identity .profile-view-actions > .text-button { width: max-content; max-width: 100%; min-height: 44px; flex: 0 0 auto; align-self: flex-end; margin: 0; text-align: center; }
+  .profile-details-button { width: 100%; justify-self: stretch; text-align: left; }
 }

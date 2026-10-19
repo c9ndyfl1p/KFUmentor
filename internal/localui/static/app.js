@@ -126,7 +126,9 @@ function updateOverview() {
   const assessment = plan.assessment;
   $("#mentor-career-score").textContent = assessment ? `${assessment.score}/10` : "—";
   $("#mentor-career-score-note").textContent = assessment ? (assessment.level || "Оценка по данным профиля") : "Появится после анализа профиля";
-  $("#mentor-assessment-meta").textContent = assessment ? `${assessment.score}/10 · ${assessment.level || "оценка готова"}` : "Сопоставьте профиль с целевой ролью";
+  $("#mentor-assessment-meta").textContent = assessment ? `${assessment.score}/10 · ${assessment.level || "разбор готов"}` : "Критика резюме по существу";
+  const questionCount = assessment?.questions?.length || 0;
+  $("#mentor-questions-meta").textContent = questionCount ? `${questionCount} ${questionCount === 1 ? "вопрос" : "вопроса"} по вашему опыту` : "Появятся после разбора резюме";
   const steps = plan.steps || [];
   $("#mentor-plan-meta").textContent = steps.length ? `${steps.filter((step) => step.completed).length} из ${steps.length} шагов выполнено` : "План ещё не создан";
   $("#mentor-practice-meta").textContent = plan.exercise?.title || "Задание под ваш уровень";
@@ -300,7 +302,8 @@ function renderMentorAssessment(assessment) {
   target.replaceChildren();
   target.hidden = !assessment;
   if (!assessment) {
-    $("#mentor-questions-wrap").hidden = true;
+    renderMentorQuestions(null);
+    $("#mentor-questions-status").textContent = "";
     $("#mentor-tailor-actions").hidden = !$("#mentor-vacancy").value.trim();
     return;
   }
@@ -317,6 +320,41 @@ function renderMentorAssessment(assessment) {
   summary.textContent = assessment.summary || "";
   target.append(top, summary);
 
+  const critiques = assessment.resumeCritiques || [];
+  if (critiques.length) {
+    const critiqueSection = document.createElement("section");
+    critiqueSection.className = "mentor-critique-section";
+    const critiqueHeading = document.createElement("h4");
+    critiqueHeading.textContent = "Что насторожит работодателя";
+    const intro = document.createElement("p");
+    intro.className = "mentor-critique-intro";
+    intro.textContent = "Красным отмечены точные фрагменты резюме, к которым есть замечания.";
+    critiqueSection.append(critiqueHeading, intro);
+    const sectionNames = {
+      summary: "О себе", skills: "Навыки", experience: "Опыт работы", projects: "Проекты",
+      achievements: "Достижения", education: "Образование", languages: "Языки",
+    };
+    for (const critique of critiques) {
+      const card = document.createElement("article");
+      card.className = "mentor-critique-card";
+      const label = document.createElement("span");
+      label.className = "mentor-critique-label";
+      label.textContent = sectionNames[critique.section] || "Резюме";
+      const quote = document.createElement("blockquote");
+      quote.className = "mentor-critique-quote";
+      quote.textContent = critique.quote;
+      const criticism = document.createElement("p");
+      criticism.className = "mentor-critique-reason";
+      criticism.textContent = critique.criticism;
+      const recommendation = document.createElement("p");
+      recommendation.className = "mentor-critique-fix";
+      recommendation.textContent = critique.recommendation;
+      card.append(label, quote, criticism, recommendation);
+      critiqueSection.append(card);
+    }
+    target.append(critiqueSection);
+  }
+
   for (const [title, items, className] of [
     ["Что уже подтверждено", assessment.strengths, "is-positive"],
     ["Что подтянуть или уточнить", assessment.gaps, "is-gap"],
@@ -331,16 +369,25 @@ function renderMentorAssessment(assessment) {
     renderList(group, items);
     target.append(group);
   }
-  const questions = assessment.questions || [];
-  $("#mentor-questions-wrap").hidden = !questions.length;
-  renderQuestionFields($("#mentor-questions"), questions, assessment.clarificationAnswers || [], "assessment", 1500, "Поделитесь примером из опыта или уточните факт из профиля");
-  renderQuestionAnswerHistory($("#mentor-clarification-history"), assessment.clarificationAnswers || []);
-  $("#mentor-assess").textContent = questions.length ? "Уточнить оценку" : "Оценить навыки";
+  renderMentorQuestions(assessment);
+  $("#mentor-assess").textContent = "Разобрать резюме";
   const tailorActions = $("#mentor-tailor-actions");
   tailorActions.hidden = !$("#mentor-vacancy").value.trim();
   const tailoredWrap = $("#mentor-tailored-wrap");
   tailoredWrap.hidden = !assessment.tailored;
   if (assessment.tailored) $("#mentor-tailored-draft").value = formatTailoredResume(assessment.tailored);
+}
+
+function renderMentorQuestions(assessment) {
+  const questions = assessment?.questions || [];
+  const answers = assessment?.clarificationAnswers || [];
+  $("#mentor-questions-empty").hidden = questions.length > 0;
+  $("#mentor-questions-form").hidden = questions.length === 0;
+  $("#mentor-questions-meta").textContent = questions.length
+    ? `${questions.length} ${questions.length === 1 ? "вопрос" : "вопроса"} по вашему опыту`
+    : "Появятся после разбора резюме";
+  renderQuestionFields($("#mentor-questions"), questions, answers, "mentor-clarification", 1500, "Ответьте конкретным примером из опыта");
+  renderQuestionAnswerHistory($("#mentor-clarification-history"), answers);
 }
 
 function renderQuestionFields(container, questions, answers, prefix, maxLength, placeholder) {
@@ -569,22 +616,69 @@ $("#mentor-assessment-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("#mentor-assess");
   button.disabled = true;
-  setMessage($("#mentor-assessment-status"), "Сверяю профиль с целью и готовлю уточняющие вопросы…");
+  setMessage($("#mentor-assessment-status"), "Проверяю резюме глазами работодателя и сверяю точные формулировки…");
   try {
     const assessment = await request("/api/mentor/assessment", {
       method: "POST",
     body: JSON.stringify({
       vacancy: $("#mentor-vacancy").value,
-      answers: mergeQuestionAnswers(overviewPlan?.assessment?.clarificationAnswers, collectQuestionAnswers($("#mentor-questions"))),
+      answers: overviewPlan?.assessment?.clarificationAnswers || [],
     }),
     });
     renderMentorAssessment(assessment);
-    setMessage($("#mentor-assessment-status"), "Оценка сохранена локально.");
+    updateOverview();
+    setMessage($("#mentor-assessment-status"), "Разбор сохранён локально. Замечания привязаны к точным фрагментам резюме.");
   } catch (error) {
     setMessage($("#mentor-assessment-status"), error.message, true);
   } finally {
     button.disabled = false;
-    button.textContent = $("#mentor-questions-wrap").hidden ? "Оценить навыки" : "Уточнить оценку";
+    button.textContent = "Разобрать резюме";
+  }
+});
+
+$("#mentor-questions-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("#mentor-answer-questions");
+  const answers = mergeQuestionAnswers(
+    overviewPlan?.assessment?.clarificationAnswers,
+    collectQuestionAnswers($("#mentor-questions")),
+  );
+  button.disabled = true;
+  setMessage($("#mentor-questions-status"), "Учитываю ваши ответы и пересматриваю разбор…");
+  try {
+    const assessment = await request("/api/mentor/assessment", {
+      method: "POST",
+      body: JSON.stringify({ vacancy: $("#mentor-vacancy").value, answers }),
+    });
+    renderMentorAssessment(assessment);
+    if (overviewPlan) overviewPlan.assessment = assessment;
+    updateOverview();
+    setMessage($("#mentor-questions-status"), "Ответы учтены. Разбор резюме обновлён.");
+  } catch (error) {
+    setMessage($("#mentor-questions-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#mentor-reset-history").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  if (!window.confirm("Сбросить историю ментора? Удалятся разбор резюме, план, задания и ответы собеседования.")) return;
+  button.disabled = true;
+  button.textContent = "Сбрасываю…";
+  try {
+    const plan = await request("/api/mentor/plan", { method: "DELETE" });
+    $("#mentor-vacancy").value = "";
+    $("#mentor-tailored-draft").value = "";
+    $("#mentor-tailored-wrap").hidden = true;
+    $("#mentor-tailor-actions").hidden = true;
+    setMessage($("#mentor-assessment-status"), "История ментора сброшена.");
+    renderMentorState(plan);
+  } catch (error) {
+    setMessage($("#mentor-assessment-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Сбросить историю";
   }
 });
 

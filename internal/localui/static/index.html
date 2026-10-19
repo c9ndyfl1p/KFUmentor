@@ -212,28 +212,30 @@
             <div class="mentor-hero-score"><span>ОЦЕНКА НАВЫКОВ</span><strong id="mentor-career-score">—</strong><small id="mentor-career-score-note">Появится после анализа профиля</small></div>
           </div>
 
+          <div class="mentor-history-actions">
+            <span>План, оценки и ответы сохраняются на этом компьютере.</span>
+            <button type="button" class="button button-secondary button-compact" id="mentor-reset-history">Сбросить историю</button>
+          </div>
+
           <div class="mentor-tabs" role="tablist" aria-label="Инструменты карьерного ментора">
-            <button type="button" role="tab" id="mentor-tab-assessment" class="mentor-bento-assessment" aria-controls="mentor-panel-assessment" aria-selected="true" tabindex="0" data-mentor-tab="assessment"><span class="mentor-bento-label">01 · ДИАГНОСТИКА</span><strong>Анализ навыков</strong><small id="mentor-assessment-meta">Сопоставьте профиль с целевой ролью</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
-            <button type="button" role="tab" id="mentor-tab-plan" class="mentor-bento-plan" aria-controls="mentor-panel-plan" aria-selected="false" tabindex="-1" data-mentor-tab="plan"><span class="mentor-bento-label">02 · РАЗВИТИЕ</span><strong>План действий</strong><small id="mentor-plan-meta">План ещё не создан</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
-            <button type="button" role="tab" id="mentor-tab-practice" class="mentor-bento-practice" aria-controls="mentor-panel-practice" aria-selected="false" tabindex="-1" data-mentor-tab="practice"><span class="mentor-bento-label">03 · ПРАКТИКА</span><strong>Практические задания</strong><small id="mentor-practice-meta">Задание под ваш уровень</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
-            <button type="button" role="tab" id="mentor-tab-interview" class="mentor-bento-interview" aria-controls="mentor-panel-interview" aria-selected="false" tabindex="-1" data-mentor-tab="interview"><span class="mentor-bento-label">04 · СОБЕСЕДОВАНИЕ</span><strong>AI-собеседование</strong><small id="mentor-interview-meta">Тренировка с обратной связью</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+            <button type="button" role="tab" id="mentor-tab-assessment" class="mentor-bento-assessment" aria-controls="mentor-panel-assessment" aria-selected="true" tabindex="0" data-mentor-tab="assessment"><span class="mentor-bento-label">01 · РЕЗЮМЕ</span><strong>Разбор работодателем</strong><small id="mentor-assessment-meta">Критика резюме по существу</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+            <button type="button" role="tab" id="mentor-tab-questions" class="mentor-bento-questions" aria-controls="mentor-panel-questions" aria-selected="false" tabindex="-1" data-mentor-tab="questions"><span class="mentor-bento-label">02 · УТОЧНЕНИЯ</span><strong>Вопросы и ответы</strong><small id="mentor-questions-meta">Появятся после разбора резюме</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+            <button type="button" role="tab" id="mentor-tab-plan" class="mentor-bento-plan" aria-controls="mentor-panel-plan" aria-selected="false" tabindex="-1" data-mentor-tab="plan"><span class="mentor-bento-label">03 · РАЗВИТИЕ</span><strong>План действий</strong><small id="mentor-plan-meta">План ещё не создан</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+            <button type="button" role="tab" id="mentor-tab-practice" class="mentor-bento-practice" aria-controls="mentor-panel-practice" aria-selected="false" tabindex="-1" data-mentor-tab="practice"><span class="mentor-bento-label">04 · ПРАКТИКА</span><strong>Практические задания</strong><small id="mentor-practice-meta">Задание под ваш уровень</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+            <button type="button" role="tab" id="mentor-tab-interview" class="mentor-bento-interview" aria-controls="mentor-panel-interview" aria-selected="false" tabindex="-1" data-mentor-tab="interview"><span class="mentor-bento-label">05 · СОБЕСЕДОВАНИЕ</span><strong>AI-собеседование</strong><small id="mentor-interview-meta">Тренировка с обратной связью</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
           </div>
 
           <section class="mentor-module" id="mentor-panel-assessment" data-mentor-panel="assessment" role="tabpanel" aria-labelledby="mentor-tab-assessment">
             <div class="mentor-module-heading">
-              <div><span class="mentor-label">01 · ДИАГНОСТИКА</span><h3 id="mentor-assessment-title">Оценка навыков</h3></div>
+              <div><span class="mentor-label">01 · ДИАГНОСТИКА</span><h3 id="mentor-assessment-title">Разбор резюме работодателем</h3></div>
               <span class="mentor-module-note">Можно добавить текст вакансии</span>
             </div>
             <form id="mentor-assessment-form">
               <label class="field-label" for="mentor-vacancy">Целевая вакансия <span class="label-hint">необязательно</span></label>
               <textarea id="mentor-vacancy" rows="3" maxlength="16000" placeholder="Вставьте описание вакансии или оставьте поле пустым для общей оценки профиля"></textarea>
-              <div id="mentor-questions-wrap" class="mentor-questions-wrap" hidden>
-                <div id="mentor-clarification-history" class="mentor-clarification-history"></div>
-                <div id="mentor-questions" class="mentor-question-fields"></div>
-              </div>
               <div class="mentor-form-footer">
                 <span id="mentor-assessment-status" class="save-message" aria-live="polite"></span>
-                <button class="button button-secondary" id="mentor-assess" type="submit">Оценить навыки</button>
+                <button class="button button-secondary" id="mentor-assess" type="submit">Разобрать резюме</button>
               </div>
             </form>
             <div id="mentor-assessment-result" class="mentor-result" hidden></div>
@@ -245,6 +247,25 @@
                 <div class="mentor-form-footer"><span id="mentor-tailor-status" class="save-message" aria-live="polite"></span><button class="button button-secondary" id="mentor-copy-tailored" type="button">Скопировать черновик</button></div>
               </div>
             </div>
+          </section>
+
+          <section class="mentor-module" id="mentor-panel-questions" data-mentor-panel="questions" role="tabpanel" aria-labelledby="mentor-tab-questions" hidden>
+            <div class="mentor-module-heading">
+              <div><span class="mentor-label">02 · УТОЧНЕНИЯ</span><h3>Вопросы по вашему опыту</h3></div>
+              <span class="mentor-module-note">Ответы помогут точнее оценить профиль</span>
+            </div>
+            <div id="mentor-questions-empty" class="mentor-intro">
+              <div><span class="mentor-label">СНАЧАЛА РАЗБОР</span><p>Ментор сформирует вопросы по пробелам в данных после критического разбора резюме.</p></div>
+              <button type="button" class="button button-secondary" data-next-mentor-tab="assessment">К разбору резюме</button>
+            </div>
+            <form id="mentor-questions-form" hidden>
+              <div id="mentor-clarification-history" class="mentor-clarification-history"></div>
+              <div id="mentor-questions" class="mentor-question-fields"></div>
+              <div class="mentor-form-footer">
+                <span id="mentor-questions-status" class="save-message" aria-live="polite"></span>
+                <button class="button button-secondary" id="mentor-answer-questions" type="submit">Сохранить ответы и уточнить разбор</button>
+              </div>
+            </form>
           </section>
 
           <section class="mentor-module" id="mentor-panel-plan" data-mentor-panel="plan" role="tabpanel" aria-labelledby="mentor-tab-plan" hidden>

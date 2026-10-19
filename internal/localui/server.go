@@ -139,6 +139,7 @@ func Start(cfg types.Config, address string) error {
 	mux.HandleFunc("GET /api/profile/details", app.handleProfileDetails)
 	mux.HandleFunc("POST /api/hr/reply", app.handleDraftHRReply)
 	mux.HandleFunc("GET /api/mentor/plan", app.handleGetMentorPlan)
+	mux.HandleFunc("DELETE /api/mentor/plan", app.handleResetMentorHistory)
 	mux.HandleFunc("POST /api/mentor/plan", app.handleGenerateMentorPlan)
 	mux.HandleFunc("POST /api/mentor/step", app.handleUpdateMentorStep)
 	mux.HandleFunc("POST /api/mentor/assessment", app.handleMentorAssessment)
