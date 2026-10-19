@@ -22,86 +22,119 @@
     </div>
   </dialog>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="matchmentor — главная">
+    <a class="brand" href="#overview-section" aria-label="matchmentor — обзор">
       <span class="brand-logo-window" aria-hidden="true">
         <img src="/static/matchmentor-logo.png" alt="" class="brand-logo">
       </span>
     </a>
     <nav class="primary-nav" aria-label="Разделы приложения">
-      <a href="#search-section" data-app-section="search">Поиск</a>
-      <a href="#hr-section" data-app-section="hr">Ответ HR</a>
-      <a href="#mentor-section" data-app-section="mentor">Ментор</a>
-      <a href="#profile-section" data-app-section="profile">Профиль</a>
+      <span class="nav-caption">РАБОТА</span>
+      <a href="#overview-section" data-app-section="overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h5V3H3v7Zm9 7h5V9h-5v8ZM3 17h5v-4H3v4Zm9-12v2h5V5h-5Z"/></svg><span>Обзор</span></a>
+      <a href="#search-section" data-app-section="search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.8" cy="8.8" r="5.8"/><path d="m13.2 13.2 4 4"/></svg><span>Поиск вакансий</span></a>
+      <a href="#hr-section" data-app-section="hr"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14v9H9l-4 3v-3H3v-9Z"/><path d="M6 8h8M6 10.5h5"/></svg><span>Ответ HR</span></a>
+      <span class="nav-caption nav-caption-career">КАРЬЕРА</span>
+      <a href="#mentor-section" data-app-section="mentor"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 17s-6.5-3.8-6.5-8.4A3.6 3.6 0 0 1 10 6.7a3.6 3.6 0 0 1 6.5 1.9C16.5 13.2 10 17 10 17Z"/><path d="M10 3v2M3.5 4.5 5 6M16.5 4.5 15 6"/></svg><span>Карьерный ментор</span></a>
+      <a href="#profile-section" data-app-section="profile"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6.3" r="3.2"/><path d="M3.5 17c.6-3.1 2.8-4.8 6.5-4.8s5.9 1.7 6.5 4.8"/></svg><span>Профиль</span></a>
     </nav>
-    <span class="local-badge"><span class="local-dot"></span>Только на этом компьютере</span>
+    <div class="sidebar-foot">
+      <span class="local-badge"><span class="local-dot"></span>Профиль на вашем компьютере</span>
+      <span class="sidebar-version">matchmentor · hh.ru</span>
+    </div>
   </header>
 
   <main class="page-shell">
     <div class="workspace">
       <div class="primary-column">
-        <section class="card search-card" id="search-section" data-view="search" aria-labelledby="search-title">
-          <div class="card-heading">
+        <section class="card overview-card" id="overview-section" data-view="overview" aria-labelledby="overview-title">
+          <div class="overview-heading">
             <div>
-              <h2 id="search-title">Что ищем?</h2>
-              <p>Опишите должность, город или условия</p>
+              <p class="eyebrow">ВАШ КАРЬЕРНЫЙ ЦЕНТР</p>
+              <h1 id="overview-title">Поиск работы с поддержкой ментора</h1>
+              <p class="overview-lead">Вакансии, подготовка и развитие — в одном рабочем пространстве.</p>
             </div>
-            <div id="status-chip" class="status-chip" aria-live="polite">
-              <span class="status-dot"></span><span id="status-text">Подключаюсь…</span>
+            <a class="button button-primary" href="#search-section">Найти вакансии <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="overview-metrics" aria-label="Сводка по вашим данным">
+            <article class="overview-metric"><span>Вакансии</span><strong id="overview-vacancies">—</strong><small>в последнем поиске</small></article>
+            <article class="overview-metric"><span>Отклики</span><strong id="overview-applications">—</strong><small>подтверждено hh.ru</small></article>
+            <article class="overview-metric"><span>Интервью</span><strong id="overview-interview">0</strong><small>ответов на тренировке</small></article>
+            <article class="overview-metric"><span>Профиль</span><strong id="overview-profile">0%</strong><small>заполненность</small></article>
+          </div>
+          <div class="overview-lower">
+            <section class="overview-panel" aria-labelledby="overview-activity-title">
+              <div class="overview-panel-heading"><div><p class="eyebrow">ПОСЛЕДНИЙ ЗАПУСК</p><h2 id="overview-activity-title">Активность агента</h2></div><a class="text-button" href="#activity-section">Открыть ход поиска</a></div>
+              <p class="overview-agent-status" id="overview-agent-status">Поиск ещё не запускался</p>
+              <div id="overview-activity-items" class="overview-activity-items"><p class="overview-empty">Запустите поиск, чтобы увидеть реальные результаты здесь.</p></div>
+            </section>
+            <aside class="overview-next" aria-labelledby="overview-next-title">
+              <span class="overview-next-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg></span>
+              <p class="eyebrow">СЛЕДУЮЩИЙ ШАГ</p>
+              <h2 id="overview-next-title">Заполните профиль</h2>
+              <p id="overview-next-copy">Добавьте навыки и опыт, чтобы агент мог сравнивать их с требованиями вакансий.</p>
+              <a class="button button-secondary" id="overview-next-link" href="#profile-section">Открыть профиль</a>
+            </aside>
+          </div>
+        </section>
+
+        <section class="card search-card" id="search-section" data-view="search" aria-labelledby="search-title">
+          <div class="search-workspace">
+            <aside class="search-editorial">
+              <p class="eyebrow">MATCHMENTOR · ПОИСК</p>
+              <h1 id="search-title">Давайте найдём<br><em>вашу следующую</em><br>возможность.</h1>
+              <p class="search-editorial-copy">Опишите роль и приоритеты. Агент сравнит найденные вакансии с вашим профилем и покажет, что действительно подходит.</p>
+              <ol class="search-steps" aria-label="Этапы поиска">
+                <li><a href="#task"><span>01</span><span>Направление</span></a></li>
+                <li><a href="#city"><span>02</span><span>Параметры</span></a></li>
+                <li><a href="#activity-section"><span>03</span><span>Результат</span></a></li>
+              </ol>
+              <div id="status-chip" class="status-chip" aria-live="polite">
+                <span class="status-dot"></span><span id="status-text">Подключаюсь…</span>
+              </div>
+            </aside>
+            <div class="search-builder">
+              <div class="search-builder-head">
+                <div><span class="section-index">01</span><span class="section-kicker">СФОРМУЛИРУЙТЕ ЗАПРОС</span></div>
+                <span class="builder-caption">Можно обычными словами</span>
+              </div>
+              <form id="run-form">
+                <label class="visually-hidden" for="task">Опишите работу, которую ищете</label>
+                <textarea class="search-query" id="task" name="task" rows="3" maxlength="2000" placeholder="Опишите работу, которую ищете…" required></textarea>
+                <div class="search-filters">
+                  <div class="search-filter">
+                    <label class="field-label" for="city">ГОРОД ИЛИ РЕГИОН</label>
+                    <input id="city" name="city" type="text" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="city-suggestions" aria-expanded="false" placeholder="Вся Россия">
+                    <input id="area-id" name="areaId" type="hidden" value="">
+                    <div id="city-suggestions" class="city-suggestions" role="listbox" aria-label="Города и регионы hh.ru" hidden></div>
+                    <small id="city-hint" class="city-hint" aria-live="polite">Оставьте поле пустым, чтобы искать по всей России.</small>
+                  </div>
+                </div>
+                <div id="apply-note" class="apply-note" hidden>Отклики отправляются от вашего аккаунта hh.ru. Проверьте профиль и убедитесь, что вы вошли в браузере.</div>
+                <details class="advanced-settings" id="advanced-settings">
+                  <summary><span><span class="section-index">02</span>Точные настройки</span><span class="advanced-chevron" aria-hidden="true">+</span></summary>
+                  <div class="advanced-settings-content">
+                    <div class="task-options">
+                      <label class="toggle-row"><span class="toggle-copy"><strong>Показывать браузер</strong><small>Для входа на hh.ru и ручного контроля</small></span><input type="checkbox" id="visible-browser"><span class="switch" aria-hidden="true"></span></label>
+                      <label class="toggle-row apply-toggle"><span class="toggle-copy"><strong>Отправлять отклики</strong><small>Только при соответствии выше порога</small></span><input type="checkbox" id="auto-apply"><span class="switch" aria-hidden="true"></span></label>
+                    </div>
+                    <div class="limits-grid">
+                      <div class="limit-field"><label class="field-label" for="vacancy-limit">Лимит вакансий</label><input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint"><small id="vacancy-limit-hint" class="city-hint">Подтверждённых по оценке вакансий</small></div>
+                      <div class="limit-field"><label class="field-label" for="application-target">Цель по откликам</label><input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint"><small id="application-target-hint" class="city-hint">Доступно при включённых откликах</small></div>
+                      <div class="limit-field"><label class="field-label" for="minimum-score">Минимальная оценка соответствия</label><input id="minimum-score" name="minimumScore" type="number" min="0" max="10" step="1" value="7" required aria-describedby="minimum-score-hint"><small id="minimum-score-hint" class="city-hint">Ниже порога вакансия пропускается</small></div>
+                    </div>
+                  </div>
+                </details>
+                <div class="integration-row" aria-label="Подключения">
+                  <div class="integration-card"><span class="integration-mark hh-mark" aria-hidden="true">hh</span><span><strong>hh.ru</strong><small>Откройте аккаунт для поиска</small></span><button class="integration-action" id="login-button" type="button">Войти ↗</button></div>
+                  <div class="integration-card"><span class="integration-mark ai-mark" aria-hidden="true">AI</span><span><strong>Модель</strong><small>Вход откроет окно DeepSeek</small></span><button class="integration-action" id="deepseek-login-button" type="button">Открыть ↗</button></div>
+                </div>
+                <div class="form-footer">
+                  <span class="privacy-hint"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4 5v4.2c0 4 2.5 6.8 6 8.3 3.5-1.5 6-4.3 6-8.3V5l-6-2.5Zm0 4v4m0 2.8h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Поиск выполняется на вашем компьютере</span>
+                  <button class="button button-primary" id="run-button" type="submit"><span>Начать поиск</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                  <button class="button button-secondary" id="stop-button" type="button" hidden>Остановить</button>
+                </div>
+              </form>
             </div>
           </div>
-          <form id="run-form">
-            <label class="field-label" for="task">Задача для агента</label>
-            <textarea id="task" name="task" rows="3" maxlength="2000" placeholder="Например: найди удалённые вакансии Python-разработчика уровня middle" required></textarea>
-            <label class="field-label" for="city">Город</label>
-            <input id="city" name="city" type="text" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="city-suggestions" aria-expanded="false" placeholder="Начните вводить город или регион">
-            <input id="area-id" name="areaId" type="hidden" value="">
-            <div id="city-suggestions" class="city-suggestions" role="listbox" aria-label="Города и регионы hh.ru" hidden></div>
-            <small id="city-hint" class="city-hint" aria-live="polite">Оставьте поле пустым, чтобы искать по всей России.</small>
-            <div class="task-options">
-              <label class="toggle-row">
-                <span class="toggle-copy"><strong>Открыть окно браузера</strong><small>Нужно для первого входа на hh.ru или ручного контроля</small></span>
-                <input type="checkbox" id="visible-browser">
-                <span class="switch" aria-hidden="true"></span>
-              </label>
-              <label class="toggle-row apply-toggle">
-                <span class="toggle-copy"><strong>Отправлять отклики</strong><small>Агент отправит отклик только при совпадении от 7/10</small></span>
-                <input type="checkbox" id="auto-apply">
-                <span class="switch" aria-hidden="true"></span>
-              </label>
-            </div>
-            <div class="limits-grid">
-              <div class="limit-field">
-                <label class="field-label" for="vacancy-limit">Лимит вакансий</label>
-                <input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint">
-                <small id="vacancy-limit-hint" class="city-hint">Сколько подходящих вакансий найти</small>
-              </div>
-              <div class="limit-field">
-                <label class="field-label" for="application-target">Цель по откликам</label>
-                <input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint">
-                <small id="application-target-hint" class="city-hint">Доступно при включённых откликах</small>
-              </div>
-              <div class="limit-field">
-                <label class="field-label" for="minimum-score">Минимальная оценка соответствия</label>
-                <input id="minimum-score" name="minimumScore" type="number" min="0" max="10" step="1" value="7" required aria-describedby="minimum-score-hint">
-                <small id="minimum-score-hint" class="city-hint">0 — без порога; ниже выбранного — пропускать</small>
-              </div>
-            </div>
-            <div id="apply-note" class="apply-note" hidden>Отклики отправляются от вашего аккаунта hh.ru. Проверьте профиль и убедитесь, что вы вошли в браузере.</div>
-            <div class="login-row">
-              <div class="login-actions">
-                <button class="button button-secondary" id="login-button" type="button">Только войти на hh.ru</button>
-                <button class="button button-secondary" id="deepseek-login-button" type="button">Войти в DeepSeek</button>
-              </div>
-              <small>Вход в DeepSeek откроет окно модели. Поиск автоматически не запустится.</small>
-            </div>
-            <div class="form-footer">
-              <span class="privacy-hint"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4 5v4.2c0 4 2.5 6.8 6 8.3 3.5-1.5 6-4.3 6-8.3V5l-6-2.5Zm0 4v4m0 2.8h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Поиск выполняется на вашем компьютере</span>
-              <button class="button button-primary" id="run-button" type="submit">
-                <span>Начать поиск</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
-              <button class="button button-secondary" id="stop-button" type="button" hidden>Остановить</button>
-            </div>
-          </form>
         </section>
 
         <section class="card activity-card" id="activity-section" data-view="search" aria-labelledby="activity-title">
@@ -118,16 +151,15 @@
         </section>
 
         <section class="card hr-card" id="hr-section" data-view="hr" aria-labelledby="hr-title">
-          <div class="card-heading">
-            <div class="step-icon step-icon-muted" aria-hidden="true">HR</div>
-            <div>
-              <h2 id="hr-title">Переписка с работодателем</h2>
-              <p>ИИ подготовит ответ по сообщению HR и вашему профилю</p>
-            </div>
+          <div class="hr-editorial-heading">
+            <div><p class="eyebrow">AI WRITING WORKSPACE</p><h2 id="hr-title">Каждое слово<br><em>имеет значение.</em></h2></div>
+            <p>Подготовьте уверенный ответ работодателю на основе переписки и вашего профиля. Проверьте факты и отредактируйте черновик перед отправкой.</p>
           </div>
           <form id="hr-reply-form">
+            <div class="hr-workspace">
+              <div class="hr-source-column">
             <div class="hr-fields">
-              <div><label class="field-label" for="hr-position">Вакансия</label><input id="hr-position" maxlength="300" placeholder="Например: Go-разработчик"></div>
+            <div><label class="field-label" for="hr-position">Вакансия</label><input id="hr-position" maxlength="300" placeholder="Например: Go-разработчик"></div>
               <div><label class="field-label" for="hr-company">Компания</label><input id="hr-company" maxlength="300" placeholder="Название компании"></div>
             </div>
             <label class="field-label" for="hr-context">Предыдущая переписка <span class="label-hint">необязательно</span></label>
@@ -135,28 +167,45 @@
             <label class="field-label" for="hr-message">Сообщение от HR</label>
             <textarea id="hr-message" rows="4" maxlength="12000" placeholder="Вставьте сюда сообщение работодателя" required></textarea>
             <div class="hr-form-footer">
-              <span class="privacy-hint">Черновик создаётся выбранной моделью. Перед отправкой проверьте факты и договорённости.</span>
+              <span class="privacy-hint">Перед отправкой проверьте факты и договорённости.</span>
               <button class="button button-primary" id="draft-reply" type="submit">Подготовить ответ</button>
             </div>
+              </div>
+              <div class="hr-response-column">
+            <div class="response-heading"><div><p class="eyebrow">ВАШ ЧЕРНОВИК</p><h3>Ответ работодателю</h3></div><span class="draft-badge">Можно редактировать</span></div>
             <label class="field-label" for="hr-reply">Черновик ответа <span class="label-hint">можно отредактировать</span></label>
-            <textarea id="hr-reply" rows="5" maxlength="8000" placeholder="Ответ модели появится здесь"></textarea>
+            <textarea id="hr-reply" class="hr-editor-text" rows="8" maxlength="8000" placeholder="Черновик появится здесь после анализа сообщения HR"></textarea>
+            <div id="hr-draft-insight" class="hr-draft-insight"><span aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 2v16M2 10h16M4.3 4.3l11.4 11.4M15.7 4.3 4.3 15.7"/></svg></span><p>Укажите вакансию и вставьте сообщение работодателя. Подготовленный текст останется черновиком, пока вы сами его не отправите.</p></div>
             <div class="hr-actions">
               <span id="hr-message-status" class="save-message" aria-live="polite"></span>
+              <button class="button button-secondary" id="regenerate-reply" type="button" disabled>Перегенерировать</button>
               <button class="button button-secondary" id="copy-reply" type="button" disabled>Скопировать</button>
               <a class="button button-secondary" href="https://hh.ru/applicant/vacancy_response" target="_blank" rel="noopener noreferrer">Открыть мои отклики на hh.ru</a>
+            </div>
+              </div>
             </div>
           </form>
         </section>
 
         <section class="card mentor-card" id="mentor-section" data-view="mentor" aria-labelledby="mentor-title">
-          <div class="card-heading">
-            <div>
-              <h2 id="mentor-title">Карьерный ментор</h2>
-              <p>Оценка навыков, развитие и подготовка к собеседованиям</p>
+          <div class="mentor-hero">
+            <div class="mentor-hero-copy">
+              <p class="eyebrow">ВАШ КАРЬЕРНЫЙ МЕНТОР</p>
+              <h2 id="mentor-title">Ваш потенциал —<br><em>точка отсчёта.</em></h2>
+              <p>Анализируйте навыки, развивайтесь и готовьтесь к следующему карьерному шагу.</p>
             </div>
+            <div class="mentor-orbit" aria-hidden="true"><span></span><i></i><b></b></div>
+            <div class="mentor-hero-score"><span>ОЦЕНКА НАВЫКОВ</span><strong id="mentor-career-score">—</strong><small id="mentor-career-score-note">Появится после анализа профиля</small></div>
           </div>
 
-          <section class="mentor-module" aria-labelledby="mentor-assessment-title">
+          <div class="mentor-tabs" role="tablist" aria-label="Инструменты карьерного ментора">
+            <button type="button" role="tab" id="mentor-tab-assessment" class="mentor-bento-assessment" aria-controls="mentor-panel-assessment" aria-selected="true" tabindex="0" data-mentor-tab="assessment"><span class="mentor-bento-label">01 · ДИАГНОСТИКА</span><strong>Анализ навыков</strong><small id="mentor-assessment-meta">Сопоставьте профиль с целевой ролью</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+            <button type="button" role="tab" id="mentor-tab-plan" class="mentor-bento-plan" aria-controls="mentor-panel-plan" aria-selected="false" tabindex="-1" data-mentor-tab="plan"><span class="mentor-bento-label">02 · РАЗВИТИЕ</span><strong>План действий</strong><small id="mentor-plan-meta">План ещё не создан</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+            <button type="button" role="tab" id="mentor-tab-practice" class="mentor-bento-practice" aria-controls="mentor-panel-practice" aria-selected="false" tabindex="-1" data-mentor-tab="practice"><span class="mentor-bento-label">03 · ПРАКТИКА</span><strong>Практические задания</strong><small id="mentor-practice-meta">Задание под ваш уровень</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+            <button type="button" role="tab" id="mentor-tab-interview" class="mentor-bento-interview" aria-controls="mentor-panel-interview" aria-selected="false" tabindex="-1" data-mentor-tab="interview"><span class="mentor-bento-label">04 · СОБЕСЕДОВАНИЕ</span><strong>AI-собеседование</strong><small id="mentor-interview-meta">Тренировка с обратной связью</small><span class="mentor-bento-arrow" aria-hidden="true">↗</span></button>
+          </div>
+
+          <section class="mentor-module" id="mentor-panel-assessment" data-mentor-panel="assessment" role="tabpanel" aria-labelledby="mentor-tab-assessment">
             <div class="mentor-module-heading">
               <div><span class="mentor-label">01 · ДИАГНОСТИКА</span><h3 id="mentor-assessment-title">Оценка навыков</h3></div>
               <span class="mentor-module-note">Можно добавить текст вакансии</span>
@@ -185,7 +234,7 @@
             </div>
           </section>
 
-          <section class="mentor-module" id="mentor-plan" aria-labelledby="mentor-plan-title">
+          <section class="mentor-module" id="mentor-panel-plan" data-mentor-panel="plan" role="tabpanel" aria-labelledby="mentor-tab-plan" hidden>
             <div class="mentor-module-heading">
               <div><span class="mentor-label">02 · РАЗВИТИЕ</span><h3 id="mentor-plan-title">План на ближайшие недели</h3></div>
               <button class="button button-secondary button-compact" id="mentor-generate" type="button">Составить план</button>
@@ -199,7 +248,7 @@
             <div id="mentor-steps" class="mentor-steps"></div>
           </section>
 
-          <section class="mentor-module" aria-labelledby="mentor-training-title">
+          <section class="mentor-module" id="mentor-panel-practice" data-mentor-panel="practice" role="tabpanel" aria-labelledby="mentor-tab-practice" hidden>
             <div class="mentor-module-heading">
               <div><span class="mentor-label">03 · ПРАКТИКА</span><h3 id="mentor-training-title">Обучение с обратной связью</h3></div>
               <span class="mentor-module-note">Задание на 20–60 минут</span>
@@ -221,7 +270,7 @@
             </div>
           </section>
 
-          <section class="mentor-module" aria-labelledby="mentor-interview-title">
+          <section class="mentor-module" id="mentor-panel-interview" data-mentor-panel="interview" role="tabpanel" aria-labelledby="mentor-tab-interview" hidden>
             <div class="mentor-module-heading">
               <div><span class="mentor-label">04 · СОБЕСЕДОВАНИЕ</span><h3 id="mentor-interview-title">Тренировочное интервью</h3></div>
               <button class="button button-secondary button-compact" id="mentor-interview-start" type="button">Начать интервью</button>
@@ -248,14 +297,32 @@
       </div>
 
       <aside class="card profile-card" id="profile-section" data-view="profile" aria-labelledby="profile-title">
-        <div class="card-heading">
-          <div>
-            <h2 id="profile-title">Ваш профиль</h2>
-            <p>Данные сохраняются только локально</p>
-          </div>
-          <button type="button" class="text-button resume-open" id="open-resume">Прикрепить резюме</button>
+        <div class="profile-editorial-heading">
+          <div><p class="eyebrow">КАРЬЕРНЫЙ ПАСПОРТ</p><h1 id="profile-title">Ваша история.<br><em>Ваш следующий шаг.</em></h1><p>Ваш опыт и сильные стороны — в одном месте.</p></div>
+          <aside class="profile-progress" aria-label="Заполненность профиля">
+            <span class="section-kicker">ГОТОВНОСТЬ ПРОФИЛЯ</span>
+            <strong id="profile-completion">0%</strong>
+            <div class="profile-progress-track" role="progressbar" aria-label="Заполненность профиля" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="profile-progress-bar"></span></div>
+            <small id="profile-completion-hint">Добавьте основные сведения, чтобы точнее оценивать вакансии.</small>
+          </aside>
         </div>
-        <form id="profile-form">
+        <section class="profile-read-view" id="profile-read-view" aria-label="Просмотр профиля">
+          <div class="profile-identity">
+            <div class="profile-identity-top"><div><span class="section-kicker">КАНДИДАТ</span><h2 id="profile-preview-name">Ваше имя</h2><p id="profile-preview-title">Желаемая должность</p></div><div class="profile-view-actions"><button type="button" class="button button-secondary" id="edit-profile-button">Редактировать профиль</button><button type="button" class="text-button resume-open" id="open-resume">Прикрепить резюме</button></div></div>
+            <p id="profile-preview-summary" class="profile-preview-summary">Коротко расскажите о своём опыте — это поможет ментору и поиску вакансий.</p>
+            <div class="profile-skills-block"><span class="section-kicker">КЛЮЧЕВЫЕ НАВЫКИ</span><div id="profile-preview-skills" class="profile-skill-tags"><span class="profile-empty">Добавьте навыки в профиль</span></div></div>
+          </div>
+          <div class="profile-detail-grid">
+            <section class="profile-detail-section"><span class="section-kicker">ОПЫТ РАБОТЫ</span><div id="profile-preview-experience" class="profile-detail-copy">Добавьте места работы и результаты.</div></section>
+            <div class="profile-detail-stack">
+              <section class="profile-detail-section"><span class="section-kicker">ПРОЕКТЫ</span><div id="profile-preview-projects" class="profile-detail-copy">Добавьте учебные или личные проекты.</div></section>
+              <section class="profile-detail-section"><span class="section-kicker">ДОСТИЖЕНИЯ</span><div id="profile-preview-achievements" class="profile-detail-copy">Добавьте результаты и достижения.</div></section>
+            </div>
+          </div>
+          <button type="button" class="text-button profile-details-button" id="edit-profile-details">Добавить структурированные разделы резюме ↗</button>
+        </section>
+        <form id="profile-form" hidden>
+          <div class="profile-edit-heading"><div><span class="section-kicker">РЕДАКТИРОВАНИЕ</span><h2>Обновите профиль</h2><p>Изменения сохраняются на этом компьютере.</p></div><button type="button" class="text-button" id="cancel-profile-edit">Закрыть</button></div>
           <label class="field-label" for="name">Имя</label>
           <input id="name" name="name" autocomplete="name" maxlength="200" placeholder="Как к вам обращаться">
 
@@ -275,10 +342,10 @@
           <textarea id="projects" name="projects" rows="3" maxlength="12000" placeholder="Название проекта, задачи и использованные технологии"></textarea>
           <label class="field-label" for="achievements">Личные достижения <span class="label-hint">по одному в строке</span></label>
           <textarea id="achievements" name="achievements" rows="3" maxlength="12000" placeholder="Конкурсы, олимпиады, награды и ваши результаты"></textarea>
-          <button type="button" class="text-button" id="edit-profile-details">Все разделы профиля</button>
           <div class="profile-footer">
             <span id="profile-message" class="save-message" aria-live="polite"></span>
-            <button class="button button-secondary" type="submit" id="save-profile">Сохранить профиль</button>
+            <button type="button" class="button button-secondary" id="cancel-profile-edit-bottom">Отмена</button>
+            <button class="button button-primary" type="submit" id="save-profile">Сохранить профиль</button>
           </div>
         </form>
         <div class="profile-footnote"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4 5v4.2c0 4 2.5 6.8 6 8.3 3.5-1.5 6-4.3 6-8.3V5l-6-2.5Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Профиль хранится на этом компьютере. Для оценки вакансий, подготовки писем и карьерного плана нужные поля передаются выбранной AI-модели; при подключении DeepSeek — в сервис DeepSeek.</div>

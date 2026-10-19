@@ -16,9 +16,15 @@ const citySuggestions = $("#city-suggestions");
 const cityHint = $("#city-hint");
 const mentorSteps = $("#mentor-steps");
 const mentorGenerateButton = $("#mentor-generate");
+let overviewState = null;
+let overviewPlan = null;
+let overviewProfile = null;
+let savedProfileSnapshot = null;
 
 const sectionForHash = new Map([
+  ["overview-section", "overview"], ["overview-title", "overview"],
   ["search-section", "search"], ["search-title", "search"],
+  ["task", "search"], ["city", "search"],
   ["activity-section", "search"], ["activity-title", "search"],
   ["hr-section", "hr"], ["hr-title", "hr"],
   ["mentor-section", "mentor"], ["mentor-title", "mentor"],
@@ -26,7 +32,7 @@ const sectionForHash = new Map([
 ]);
 
 function showAppSection() {
-  const section = sectionForHash.get(location.hash.slice(1)) || "search";
+  const section = sectionForHash.get(location.hash.slice(1)) || "overview";
   const workspace = $(".workspace");
   workspace.dataset.activeSection = section;
   document.querySelectorAll("[data-view]").forEach((view) => {
@@ -43,6 +49,154 @@ function showAppSection() {
 
 window.addEventListener("hashchange", showAppSection);
 showAppSection();
+
+function selectMentorTab(name, focus = false) {
+  const tabs = [...document.querySelectorAll("[data-mentor-tab]")];
+  const selected = tabs.find((tab) => tab.dataset.mentorTab === name) || tabs[0];
+  if (!selected) return;
+  for (const tab of tabs) {
+    const active = tab === selected;
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
+  }
+  document.querySelectorAll("[data-mentor-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.mentorPanel !== selected.dataset.mentorTab;
+  });
+  if (focus) selected.focus();
+}
+
+document.querySelectorAll("[data-mentor-tab]").forEach((tab) => {
+  tab.addEventListener("click", () => selectMentorTab(tab.dataset.mentorTab));
+  tab.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = [...document.querySelectorAll("[data-mentor-tab]")];
+    const index = tabs.indexOf(tab);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+      : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    selectMentorTab(tabs[next].dataset.mentorTab, true);
+  });
+});
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest("[data-next-mentor-tab]");
+  if (link) selectMentorTab(link.dataset.nextMentorTab);
+});
+
+function updateOverview() {
+  const state = overviewState;
+  const plan = overviewPlan || {};
+  const profile = overviewProfile || {};
+  const fields = [
+    Boolean(profile.name && profile.title),
+    Boolean(profile.summary?.trim()),
+    Boolean(profile.skills?.length),
+    Boolean(profile.experience?.trim() || profile.projects?.trim() || profile.achievements?.trim()),
+  ];
+  const completion = Math.round(fields.filter(Boolean).length / fields.length * 100);
+  $("#overview-profile").textContent = `${completion}%`;
+  $("#profile-completion").textContent = `${completion}%`;
+  $("#profile-progress-bar").style.width = `${completion}%`;
+  $(".profile-progress-track").setAttribute("aria-valuenow", String(completion));
+  $("#profile-completion-hint").textContent = completion === 100
+    ? "Основные разделы профиля заполнены. Проверьте их актуальность."
+    : "Заполните основные сведения, чтобы точнее оценивать подходящие вакансии.";
+
+  const cards = state?.cards || [];
+  $("#overview-vacancies").textContent = state?.startedAt
+    ? String(cards.filter((card) => card.score > 0 && card.score >= Number(state.minimumScore || 0)).length)
+    : "—";
+  const applicationMatch = state?.summary?.match(/ОТКЛИКИ:\s*(\d+)/i);
+  $("#overview-applications").textContent = state?.startedAt
+    ? (applicationMatch ? applicationMatch[1] : "0")
+    : "—";
+  const turns = plan.interview?.turns || [];
+  $("#overview-interview").textContent = String(turns.length);
+  const assessment = plan.assessment;
+  $("#mentor-career-score").textContent = assessment ? `${assessment.score}/10` : "—";
+  $("#mentor-career-score-note").textContent = assessment ? (assessment.level || "Оценка по данным профиля") : "Появится после анализа профиля";
+  $("#mentor-assessment-meta").textContent = assessment ? `${assessment.score}/10 · ${assessment.level || "оценка готова"}` : "Сопоставьте профиль с целевой ролью";
+  const steps = plan.steps || [];
+  $("#mentor-plan-meta").textContent = steps.length ? `${steps.filter((step) => step.completed).length} из ${steps.length} шагов выполнено` : "План ещё не создан";
+  $("#mentor-practice-meta").textContent = plan.exercise?.title || "Задание под ваш уровень";
+  $("#mentor-interview-meta").textContent = turns.length ? `${turns.length} ${turns.length === 1 ? "ответ" : "ответа"} сохранено` : "Тренировка с обратной связью";
+
+  const status = $("#overview-agent-status");
+  status.textContent = !state?.startedAt
+    ? "Поиск ещё не запускался"
+    : `${state.running ? "Выполняется" : "Последний статус"}: ${state.status || "Статус недоступен"}`;
+  const activity = $("#overview-activity-items");
+  activity.replaceChildren();
+  const recentCards = [...cards].slice(-3).reverse();
+  if (!recentCards.length) {
+    const empty = document.createElement("p");
+    empty.className = "overview-empty";
+    empty.textContent = "Запустите поиск, чтобы увидеть реальные результаты здесь.";
+    activity.append(empty);
+  } else {
+    for (const card of recentCards) {
+      const item = document.createElement("article");
+      item.className = "overview-activity-item";
+      const marker = document.createElement("span");
+      marker.className = `activity-marker is-${card.status || "running"}`;
+      marker.setAttribute("aria-hidden", "true");
+      const detail = document.createElement("div");
+      const title = document.createElement(card.url ? "a" : "strong");
+      title.className = "overview-item-title";
+      title.textContent = card.title || "Вакансия";
+      if (card.url) {
+        title.href = card.url;
+        title.target = "_blank";
+        title.rel = "noopener noreferrer";
+      }
+      const stage = document.createElement("p");
+      stage.textContent = [card.stage, card.score ? `${card.score}/10` : ""].filter(Boolean).join(" · ");
+      detail.append(title, stage);
+      item.append(marker, detail);
+      activity.append(item);
+    }
+  }
+
+  const nextTitle = $("#overview-next-title");
+  const nextCopy = $("#overview-next-copy");
+  const nextLink = $("#overview-next-link");
+  nextLink.removeAttribute("data-next-mentor-tab");
+  if (completion < 100) {
+    nextTitle.textContent = "Заполните профиль";
+    nextCopy.textContent = "Добавьте основные сведения об опыте и навыках, чтобы агент мог сравнивать вакансии с вашей реальной квалификацией.";
+    nextLink.href = "#profile-section";
+    nextLink.textContent = "Открыть профиль";
+  } else if (!plan.assessment) {
+    nextTitle.textContent = "Оцените навыки";
+    nextCopy.textContent = "Сопоставьте профиль с целевой ролью и узнайте, что стоит подтянуть.";
+    nextLink.href = "#mentor-section";
+    nextLink.dataset.nextMentorTab = "assessment";
+    nextLink.textContent = "Перейти к ментору";
+  } else if (!plan.steps?.length) {
+    nextTitle.textContent = "Составьте план развития";
+    nextCopy.textContent = "Получите практические шаги на ближайшие недели с учётом вашей оценки навыков.";
+    nextLink.href = "#mentor-section";
+    nextLink.dataset.nextMentorTab = "plan";
+    nextLink.textContent = "Открыть план";
+  } else if (!plan.exercise) {
+    nextTitle.textContent = "Закрепите навык на практике";
+    nextCopy.textContent = "Получите задание по выбранной теме и разберите решение с ментором.";
+    nextLink.href = "#mentor-section";
+    nextLink.dataset.nextMentorTab = "practice";
+    nextLink.textContent = "Получить задание";
+  } else if (!turns.length) {
+    nextTitle.textContent = "Потренируйтесь к собеседованию";
+    nextCopy.textContent = "Ответьте на вопросы по целевой роли и получите обратную связь.";
+    nextLink.href = "#mentor-section";
+    nextLink.dataset.nextMentorTab = "interview";
+    nextLink.textContent = "Начать интервью";
+  } else {
+    nextTitle.textContent = "Продолжите поиск";
+    nextCopy.textContent = "Проверьте новые предложения и настройте фильтр соответствия под свои приоритеты.";
+    nextLink.href = "#search-section";
+    nextLink.textContent = "Перейти к поиску";
+  }
+}
 
 function renderList(element, items, className = "") {
   element.replaceChildren();
@@ -111,13 +265,18 @@ function renderMentorPlan(plan) {
 
 async function loadMentorPlan() {
   try {
-    renderMentorState(await request("/api/mentor/plan"));
+    const plan = await request("/api/mentor/plan");
+    overviewPlan = plan;
+    updateOverview();
+    renderMentorState(plan);
   } catch (error) {
     setMessage($("#mentor-plan-status"), error.message, true);
   }
 }
 
 function renderMentorState(state) {
+  overviewPlan = state;
+  updateOverview();
   renderMentorPlan(state);
   renderMentorAssessment(state.assessment);
   renderMentorExercise(state.exercise);
@@ -665,6 +824,8 @@ cityField.addEventListener("blur", () => {
 });
 
 function fillProfile(profile) {
+  overviewProfile = profile;
+  savedProfileSnapshot = structuredClone(profile || {});
   $("#name").value = profile.name || "";
   $("#title").value = profile.title || "";
   $("#summary").value = profile.summary || "";
@@ -673,7 +834,46 @@ function fillProfile(profile) {
  $("#projects").value = profile.projects || "";
  $("#achievements").value = profile.achievements || "";
   if (!$("#hr-position").value) $("#hr-position").value = profile.title || "";
+  renderProfilePreview(profile);
+  updateOverview();
 }
+
+function renderProfilePreview(profile = {}) {
+  $("#profile-preview-name").textContent = profile.name?.trim() || "Ваше имя";
+  $("#profile-preview-title").textContent = profile.title?.trim() || "Желаемая должность";
+  $("#profile-preview-summary").textContent = profile.summary?.trim() || "Коротко расскажите о своём опыте — это поможет ментору и поиску вакансий.";
+  const skills = Array.isArray(profile.skills) ? profile.skills : String(profile.skills || "").split(",");
+  const tags = $("#profile-preview-skills");
+  tags.replaceChildren();
+  const cleanSkills = skills.map((skill) => String(skill).trim()).filter(Boolean);
+  if (!cleanSkills.length) {
+    const empty = document.createElement("span");
+    empty.className = "profile-empty";
+    empty.textContent = "Добавьте навыки в профиль";
+    tags.append(empty);
+  } else {
+    for (const skill of cleanSkills) {
+      const tag = document.createElement("span");
+      tag.className = "profile-skill-tag";
+      tag.textContent = skill;
+      tags.append(tag);
+    }
+  }
+  $("#profile-preview-experience").textContent = profile.experience?.trim() || "Добавьте места работы и результаты.";
+  $("#profile-preview-projects").textContent = profile.projects?.trim() || "Добавьте учебные или личные проекты.";
+  $("#profile-preview-achievements").textContent = profile.achievements?.trim() || "Добавьте результаты и достижения.";
+}
+
+function setProfileEditing(editing) {
+  $("#profile-form").hidden = !editing;
+  $("#profile-read-view").hidden = editing;
+  if (editing) $("#name").focus();
+  else $("#edit-profile-button").focus();
+}
+
+$("#edit-profile-button").addEventListener("click", () => setProfileEditing(true));
+$("#cancel-profile-edit").addEventListener("click", () => { fillProfile(savedProfileSnapshot || {}); setProfileEditing(false); });
+$("#cancel-profile-edit-bottom").addEventListener("click", () => { fillProfile(savedProfileSnapshot || {}); setProfileEditing(false); });
 
 const hrReplyForm = $("#hr-reply-form");
 const hrReplyField = $("#hr-reply");
@@ -696,6 +896,9 @@ hrReplyForm.addEventListener("submit", async (event) => {
     });
     hrReplyField.value = result.reply || "";
     copyReplyButton.disabled = !hrReplyField.value.trim();
+    $("#regenerate-reply").disabled = !hrReplyField.value.trim();
+    $("#hr-draft-insight").classList.add("has-draft");
+    $("#hr-draft-insight p").textContent = "Черновик составлен на основе вашего профиля и сообщения HR. Проверьте факты, детали и тон перед отправкой.";
     setMessage($("#hr-message-status"), "Черновик готов. Проверьте его перед отправкой.");
   } catch (error) {
     setMessage($("#hr-message-status"), error.message, true);
@@ -706,7 +909,9 @@ hrReplyForm.addEventListener("submit", async (event) => {
 });
 hrReplyField.addEventListener("input", () => {
   copyReplyButton.disabled = !hrReplyField.value.trim();
+  $("#regenerate-reply").disabled = !hrReplyField.value.trim();
 });
+$("#regenerate-reply").addEventListener("click", () => hrReplyForm.requestSubmit());
 copyReplyButton.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(hrReplyField.value);
@@ -740,12 +945,31 @@ profileForm.addEventListener("submit", async (event) => {
  achievements: $("#achievements").value,
     };
     const result = await request("/api/profile", { method: "PUT", body: JSON.stringify(data) });
+    overviewProfile = data;
+    savedProfileSnapshot = structuredClone(data);
+    renderProfilePreview(data);
+    updateOverview();
     setMessage($("#profile-message"), result.status);
+    setProfileEditing(false);
   } catch (error) {
     setMessage($("#profile-message"), error.message, true);
   } finally {
     button.disabled = false;
   }
+});
+
+profileForm.addEventListener("input", () => {
+  overviewProfile = {
+    name: $("#name").value,
+    title: $("#title").value,
+    summary: $("#summary").value,
+    skills: $("#skills").value.split(",").map((skill) => skill.trim()).filter(Boolean),
+    experience: $("#experience").value,
+    projects: $("#projects").value,
+    achievements: $("#achievements").value,
+  };
+  renderProfilePreview(overviewProfile);
+  updateOverview();
 });
 
 $("#auto-apply").addEventListener("change", (event) => {
@@ -803,7 +1027,7 @@ loginButton.addEventListener("click", async () => {
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
     loginButton.disabled = state.running;
-    loginButton.textContent = "Только войти на hh.ru";
+    loginButton.textContent = "Войти ↗";
   }
 });
 
@@ -818,7 +1042,7 @@ deepseekLoginButton.addEventListener("click", async () => {
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
     deepseekLoginButton.disabled = state.running;
-    deepseekLoginButton.textContent = "Войти в DeepSeek";
+    deepseekLoginButton.textContent = "Открыть ↗";
   }
 });
 
@@ -860,6 +1084,8 @@ async function refreshState() {
   summary.hidden = !state.summary;
 
   renderVacancyCards(state.cards || [], Boolean(state.running), Number(state.minimumScore || 0));
+  overviewState = state;
+  updateOverview();
 
   $("#activity-caption").textContent = state.startedAt
     ? `Последний запуск: ${new Date(state.startedAt).toLocaleString("ru-RU")}`

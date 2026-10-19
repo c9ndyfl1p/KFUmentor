@@ -154,7 +154,10 @@ func TestResumeBrowserPreview(t *testing.T) {
 	}
 	var errors []string
 	page.OnPageError(func(err error) { errors = append(errors, err.Error()) })
-	if _, err := page.Goto(web.URL); err != nil {
+	if _, err := page.Goto(web.URL + "#search-section"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#advanced-settings summary").Click(); err != nil {
 		t.Fatal(err)
 	}
 	if disabled, err := page.Locator("#application-target").IsDisabled(); err != nil || !disabled {

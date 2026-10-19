@@ -39,6 +39,9 @@ func TestProgressBrowser(t *testing.T) {
 		if strings.HasSuffix(name, ".js") {
 			w.Header().Set("Content-Type", "application/javascript")
 		}
+		if strings.HasSuffix(name, ".css") {
+			w.Header().Set("Content-Type", "text/css")
+		}
 		w.Write(data)
 	})
 	web := httptest.NewServer(mux)
@@ -58,7 +61,10 @@ func TestProgressBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	page.OnPageError(func(err error) { t.Error(err) })
-	if _, err := page.Goto(web.URL); err != nil {
+	if _, err := page.Goto(web.URL + "/#search-section"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#advanced-settings summary").Click(); err != nil {
 		t.Fatal(err)
 	}
 	if err := page.Locator(".vacancy-progress-card").First().WaitFor(); err != nil {
@@ -79,5 +85,57 @@ func TestProgressBrowser(t *testing.T) {
 	}
 	if text, err := page.Locator("#task-summary").InnerText(); err != nil || !strings.Contains(text, "0 из 2") {
 		t.Fatal(text, err)
+	}
+	if err := page.Locator("[data-app-section='mentor']").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#mentor-tab-plan").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if selected, err := page.Locator("#mentor-tab-plan").GetAttribute("aria-selected"); err != nil || selected != "true" {
+		t.Fatal("mentor tab did not activate", selected, err)
+	}
+	if err := page.Locator("[data-app-section='profile']").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if hidden, err := page.Locator("#profile-form").IsHidden(); err != nil || !hidden {
+		t.Fatal("profile should open in preview mode", err)
+	}
+	if err := page.Locator("#edit-profile-button").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if visible, err := page.Locator("#profile-form").IsVisible(); err != nil || !visible {
+		t.Fatal("profile editor did not open", err)
+	}
+	if err := page.Locator("#cancel-profile-edit").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("[data-app-section='hr']").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#hr-reply-form").WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatal("HR workspace did not open", err)
+	}
+	if err := page.SetViewportSize(390, 844); err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range []struct{ hash, selector string }{
+		{"#overview-section", "#overview-section"},
+		{"#search-section", "#search-section"},
+		{"#hr-section", "#hr-reply-form"},
+		{"#mentor-section", ".mentor-tabs"},
+		{"#profile-section", "#profile-read-view"},
+	} {
+		if _, err := page.Evaluate("hash => { location.hash = hash; }", route.hash); err != nil {
+			t.Fatal(err)
+		}
+		if err := page.Locator(route.selector).WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+			t.Fatal("mobile route did not open", route.hash, err)
+		}
+		widthFits, err := page.Evaluate("() => document.documentElement.scrollWidth <= window.innerWidth")
+		if err != nil || widthFits != true {
+			diagnostics, _ := page.Evaluate("() => ({viewport:window.innerWidth,doc:document.documentElement.scrollWidth,body:document.body.scrollWidth})")
+			t.Fatal("mobile layout has horizontal overflow", route.hash, diagnostics, err)
+		}
 	}
 }
