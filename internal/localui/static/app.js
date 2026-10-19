@@ -14,6 +14,422 @@ const cityField = $("#city");
 const areaIDField = $("#area-id");
 const citySuggestions = $("#city-suggestions");
 const cityHint = $("#city-hint");
+const mentorSteps = $("#mentor-steps");
+const mentorGenerateButton = $("#mentor-generate");
+
+const sectionForHash = new Map([
+  ["search-section", "search"], ["search-title", "search"],
+  ["activity-section", "search"], ["activity-title", "search"],
+  ["hr-section", "hr"], ["hr-title", "hr"],
+  ["mentor-section", "mentor"], ["mentor-title", "mentor"],
+  ["profile-section", "profile"], ["profile-title", "profile"],
+]);
+
+function showAppSection() {
+  const section = sectionForHash.get(location.hash.slice(1)) || "search";
+  const workspace = $(".workspace");
+  workspace.dataset.activeSection = section;
+  document.querySelectorAll("[data-view]").forEach((view) => {
+    view.hidden = view.dataset.view !== section;
+  });
+  document.querySelectorAll("[data-app-section]").forEach((link) => {
+    if (link.dataset.appSection === section) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  if (location.hash) {
+    requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  }
+}
+
+window.addEventListener("hashchange", showAppSection);
+showAppSection();
+
+function renderList(element, items, className = "") {
+  element.replaceChildren();
+  if (!items?.length) return;
+  const list = element.tagName === "UL" ? element : document.createElement("ul");
+  if (className) list.className = className;
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.textContent = item;
+    list.append(li);
+  }
+  if (list !== element) element.append(list);
+}
+
+function renderMentorPlan(plan) {
+  mentorSteps.replaceChildren();
+  const steps = plan.steps || [];
+  $("#mentor-goal").textContent = plan.goal || "Сохраните профиль и создайте персональный план.";
+  $("#mentor-progress-wrap").hidden = !steps.length;
+  if (!steps.length) return;
+
+  const completeCount = steps.filter((step) => step.completed).length;
+  const percent = Math.round((completeCount / steps.length) * 100);
+  $("#mentor-progress-count").textContent = `${completeCount} из ${steps.length} шагов`;
+  $("#mentor-progress-percent").textContent = `${percent}%`;
+  $("#mentor-progress-bar").style.width = `${percent}%`;
+  const progress = $(".mentor-progress-track");
+  progress.setAttribute("aria-valuenow", String(percent));
+
+  const summary = document.createElement("p");
+  summary.className = "mentor-summary";
+  summary.textContent = plan.summary || "";
+  mentorSteps.append(summary);
+
+  for (const step of steps) {
+    const article = document.createElement("article");
+    article.className = "mentor-step";
+    article.classList.toggle("is-complete", Boolean(step.completed));
+
+    const label = document.createElement("label");
+    label.className = "mentor-step-toggle";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = Boolean(step.completed);
+    checkbox.dataset.stepId = step.id;
+    checkbox.setAttribute("aria-label", `${step.completed ? "Отметить незавершённым" : "Отметить выполненным"}: ${step.title}`);
+    checkbox.addEventListener("change", () => updateMentorStep(step.id, checkbox.checked));
+    const visual = document.createElement("span");
+    visual.className = "mentor-check";
+    visual.setAttribute("aria-hidden", "true");
+    label.append(checkbox, visual);
+
+    const content = document.createElement("div");
+    content.className = "mentor-step-content";
+    const title = document.createElement("h3");
+    title.textContent = step.title;
+    const action = document.createElement("p");
+    action.textContent = step.action;
+    const reason = document.createElement("small");
+    reason.textContent = step.reason;
+    content.append(title, action, reason);
+    article.append(label, content);
+    mentorSteps.append(article);
+  }
+}
+
+async function loadMentorPlan() {
+  try {
+    renderMentorState(await request("/api/mentor/plan"));
+  } catch (error) {
+    setMessage($("#mentor-plan-status"), error.message, true);
+  }
+}
+
+function renderMentorState(state) {
+  renderMentorPlan(state);
+  renderMentorAssessment(state.assessment);
+  renderMentorExercise(state.exercise);
+  renderMentorInterview(state.interview || { turns: [] });
+}
+
+function renderMentorAssessment(assessment) {
+  const target = $("#mentor-assessment-result");
+  target.replaceChildren();
+  target.hidden = !assessment;
+  if (!assessment) {
+    $("#mentor-questions-wrap").hidden = true;
+    $("#mentor-tailor-actions").hidden = !$("#mentor-vacancy").value.trim();
+    return;
+  }
+  if (assessment.vacancy) $("#mentor-vacancy").value = assessment.vacancy;
+  if (assessment.clarifications) $("#mentor-clarifications").value = assessment.clarifications;
+  const top = document.createElement("div");
+  top.className = "mentor-assessment-score";
+  const score = document.createElement("strong");
+  score.textContent = `${assessment.score}/10`;
+  const level = document.createElement("span");
+  level.textContent = assessment.level || "Оценка профиля";
+  top.append(score, level);
+  const summary = document.createElement("p");
+  summary.className = "mentor-summary";
+  summary.textContent = assessment.summary || "";
+  target.append(top, summary);
+
+  for (const [title, items, className] of [
+    ["Что уже подтверждено", assessment.strengths, "is-positive"],
+    ["Что подтянуть или уточнить", assessment.gaps, "is-gap"],
+    ["Следующие действия", assessment.nextSteps, ""],
+  ]) {
+    if (!items?.length) continue;
+    const group = document.createElement("div");
+    group.className = `mentor-result-group ${className}`.trim();
+    const heading = document.createElement("h4");
+    heading.textContent = title;
+    group.append(heading);
+    renderList(group, items);
+    target.append(group);
+  }
+  const questions = assessment.questions || [];
+  $("#mentor-questions-wrap").hidden = !questions.length;
+  renderList($("#mentor-questions"), questions, "mentor-question-list");
+  $("#mentor-assess").textContent = questions.length ? "Уточнить оценку" : "Оценить навыки";
+  const tailorActions = $("#mentor-tailor-actions");
+  tailorActions.hidden = !$("#mentor-vacancy").value.trim();
+  const tailoredWrap = $("#mentor-tailored-wrap");
+  tailoredWrap.hidden = !assessment.tailored;
+  if (assessment.tailored) $("#mentor-tailored-draft").value = formatTailoredResume(assessment.tailored);
+}
+
+function formatTailoredResume(draft) {
+  return [
+    draft.headline,
+    "",
+    "О себе",
+    draft.summary,
+    "",
+    "Навыки",
+    (draft.skills || []).join(", "),
+    "",
+    "Опыт и результаты",
+    ...(draft.experience || []).map((item) => `• ${item}`),
+    ...(draft.gaps?.length ? ["", "Нужно проверить/уточнить", ...draft.gaps.map((item) => `• ${item}`)] : []),
+  ].filter((line, index, all) => line || (index > 0 && all[index - 1])).join("\n");
+}
+
+function renderMentorExercise(exercise) {
+  const wrapper = $("#mentor-exercise");
+  wrapper.hidden = !exercise;
+  if (!exercise) return;
+  $("#mentor-exercise-title").textContent = exercise.title || "Учебное задание";
+  $("#mentor-exercise-prompt").textContent = exercise.prompt || "";
+  renderList($("#mentor-exercise-criteria"), exercise.criteria || []);
+  $("#mentor-answer").value = exercise.answer || "";
+  const review = $("#mentor-review");
+  review.replaceChildren();
+  review.hidden = !exercise.review;
+  if (!exercise.review) return;
+  const title = document.createElement("h4");
+  title.textContent = `Оценка: ${exercise.review.score}/10`;
+  const summary = document.createElement("p");
+  summary.textContent = exercise.review.summary || "";
+  review.append(title, summary);
+  for (const [label, items] of [["Уже хорошо", exercise.review.strengths], ["Что улучшить", exercise.review.improvements]]) {
+    if (!items?.length) continue;
+    const group = document.createElement("div");
+    const heading = document.createElement("strong");
+    heading.textContent = label;
+    group.append(heading);
+    renderList(group, items);
+    review.append(group);
+  }
+  if (exercise.review.nextTry) {
+    const next = document.createElement("p");
+    next.className = "mentor-next-try";
+    next.textContent = `Следующая попытка: ${exercise.review.nextTry}`;
+    review.append(next);
+  }
+}
+
+function renderMentorInterview(interview) {
+  const current = $("#mentor-interview-current");
+  current.replaceChildren();
+  current.hidden = !interview.active;
+  if (interview.active) {
+    const label = document.createElement("span");
+    label.className = "mentor-label";
+    label.textContent = `ВОПРОС ${interview.turns.length + 1}`;
+    const question = document.createElement("p");
+    question.textContent = interview.currentQuestion;
+    current.append(label, question);
+  }
+  const form = $("#mentor-interview-form");
+  form.hidden = !interview.active;
+  $("#mentor-interview-start").hidden = Boolean(interview.active);
+  $("#mentor-interview-reset").hidden = !interview.active && !(interview.turns || []).length;
+  const turns = $("#mentor-interview-turns");
+  turns.replaceChildren();
+  for (let i = 0; i < (interview.turns || []).length; i++) {
+    const turn = interview.turns[i];
+    const article = document.createElement("article");
+    article.className = "mentor-interview-turn";
+    const question = document.createElement("h4");
+    question.textContent = `${i + 1}. ${turn.question}`;
+    const answer = document.createElement("p");
+    answer.className = "mentor-interview-answer";
+    answer.textContent = turn.answer;
+    const score = document.createElement("span");
+    score.className = "mentor-score-pill";
+    score.textContent = `${turn.score}/10`;
+    const feedback = document.createElement("p");
+    feedback.textContent = turn.feedback;
+    article.append(question, answer, score, feedback);
+    for (const [title, items] of [["Сильные стороны", turn.strengths], ["Что улучшить", turn.improvements]]) {
+      if (!items?.length) continue;
+      const group = document.createElement("div");
+      const heading = document.createElement("strong");
+      heading.textContent = title;
+      group.append(heading);
+      renderList(group, items);
+      article.append(group);
+    }
+    turns.append(article);
+  }
+  if (!interview.active && (interview.turns || []).length >= 6) {
+    const done = document.createElement("p");
+    done.className = "mentor-status";
+    done.textContent = "Тренировка завершена. Посмотрите оценки и рекомендации по ответам выше.";
+    turns.append(done);
+  }
+}
+
+mentorGenerateButton.addEventListener("click", async () => {
+  mentorGenerateButton.disabled = true;
+  mentorGenerateButton.textContent = "Составляю план…";
+  setMessage($("#mentor-plan-status"), "Ментор анализирует профиль и готовит конкретные шаги. Это может занять до пары минут.");
+  try {
+    renderMentorState(await request("/api/mentor/plan", { method: "POST" }));
+    setMessage($("#mentor-plan-status"), "План готов и сохранён на этом компьютере.");
+  } catch (error) {
+    setMessage($("#mentor-plan-status"), error.message, true);
+  } finally {
+    mentorGenerateButton.disabled = false;
+    mentorGenerateButton.textContent = "Обновить план";
+  }
+});
+
+async function updateMentorStep(id, completed) {
+  try {
+    const plan = await request("/api/mentor/step", {
+      method: "POST",
+      body: JSON.stringify({ id, completed }),
+    });
+    renderMentorPlan(plan);
+    mentorSteps.querySelector(`[data-step-id="${CSS.escape(id)}"]`)?.focus();
+    setMessage($("#mentor-plan-status"), "Прогресс сохранён.");
+  } catch (error) {
+    setMessage($("#mentor-plan-status"), error.message, true);
+    await loadMentorPlan();
+  }
+}
+
+$("#mentor-assessment-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("#mentor-assess");
+  button.disabled = true;
+  setMessage($("#mentor-assessment-status"), "Сверяю профиль с целью и готовлю уточняющие вопросы…");
+  try {
+    const assessment = await request("/api/mentor/assessment", {
+      method: "POST",
+      body: JSON.stringify({ vacancy: $("#mentor-vacancy").value, clarifications: $("#mentor-clarifications").value }),
+    });
+    renderMentorAssessment(assessment);
+    setMessage($("#mentor-assessment-status"), "Оценка сохранена локально.");
+  } catch (error) {
+    setMessage($("#mentor-assessment-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = $("#mentor-questions-wrap").hidden ? "Оценить навыки" : "Уточнить оценку";
+  }
+});
+
+$("#mentor-vacancy").addEventListener("input", () => {
+  $("#mentor-tailor-actions").hidden = !$("#mentor-vacancy").value.trim();
+});
+
+$("#mentor-tailor-resume").addEventListener("click", async () => {
+  const button = $("#mentor-tailor-resume");
+  button.disabled = true;
+  button.textContent = "Адаптирую…";
+  setMessage($("#mentor-tailor-status"), "Сверяю требования вакансии с подтверждённым опытом…");
+  try {
+    const draft = await request("/api/mentor/resume", {
+      method: "POST",
+      body: JSON.stringify({ vacancy: $("#mentor-vacancy").value }),
+    });
+    $("#mentor-tailored-draft").value = formatTailoredResume(draft);
+    $("#mentor-tailored-wrap").hidden = false;
+    setMessage($("#mentor-tailor-status"), "Черновик сохранён локально. Проверьте все факты перед использованием.");
+  } catch (error) {
+    setMessage($("#mentor-tailor-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Адаптировать резюме под вакансию";
+  }
+});
+
+$("#mentor-copy-tailored").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("#mentor-tailored-draft").value);
+    setMessage($("#mentor-tailor-status"), "Черновик скопирован.");
+  } catch {
+    setMessage($("#mentor-tailor-status"), "Не получилось скопировать. Выделите черновик и скопируйте вручную.", true);
+  }
+});
+
+$("#mentor-exercise-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("#mentor-create-exercise");
+  button.disabled = true;
+  button.textContent = "Подбираю…";
+  try {
+    renderMentorExercise(await request("/api/mentor/exercise", {
+      method: "POST",
+      body: JSON.stringify({ topic: $("#mentor-topic").value }),
+    }));
+    setMessage($("#mentor-exercise-status"), "Задание создано и сохранено.");
+  } catch (error) {
+    setMessage($("#mentor-exercise-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Получить задание";
+  }
+});
+
+$("#mentor-exercise-answer-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("#mentor-review-answer");
+  button.disabled = true;
+  button.textContent = "Разбираю…";
+  try {
+    renderMentorExercise(await request("/api/mentor/exercise/review", {
+      method: "POST",
+      body: JSON.stringify({ answer: $("#mentor-answer").value }),
+    }));
+    setMessage($("#mentor-exercise-status"), "Обратная связь сохранена.");
+  } catch (error) {
+    setMessage($("#mentor-exercise-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Разобрать ответ";
+  }
+});
+
+async function mentorInterview(action, answer = "") {
+  const button = action === "answer" ? $("#mentor-interview-submit") : $("#mentor-interview-start");
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent = action === "answer" ? "Оцениваю…" : "Готовлю вопрос…";
+  setMessage($("#mentor-interview-status"), action === "answer" ? "Разбираю ответ и готовлю следующий вопрос…" : "Подбираю первый вопрос по вашей роли…");
+  try {
+    await request("/api/mentor/interview", { method: "POST", body: JSON.stringify({ action, answer }) });
+    const state = await request("/api/mentor/plan");
+    renderMentorState(state);
+    setMessage($("#mentor-interview-status"), action === "answer" ? "Ответ оценён и сохранён." : "Интервью началось.");
+    if (action === "answer" && state.interview?.active) $("#mentor-interview-answer").focus();
+  } catch (error) {
+    setMessage($("#mentor-interview-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+$("#mentor-interview-start").addEventListener("click", () => mentorInterview("start"));
+$("#mentor-interview-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  mentorInterview("answer", $("#mentor-interview-answer").value);
+});
+$("#mentor-interview-reset").addEventListener("click", async () => {
+  try {
+    await request("/api/mentor/interview", { method: "POST", body: JSON.stringify({ action: "reset" }) });
+    renderMentorState(await request("/api/mentor/plan"));
+    setMessage($("#mentor-interview-status"), "Интервью завершено.");
+  } catch (error) {
+    setMessage($("#mentor-interview-status"), error.message, true);
+  }
+});
 
 let citySearchTimer;
 let citySearchController;
@@ -463,6 +879,7 @@ $("#clear-log").addEventListener("click", async () => {
 });
 
 loadProfile();
+loadMentorPlan();
 refreshState().catch((error) => {
   statusText.textContent = "Нет связи с локальным агентом";
   statusChip.classList.add("is-error");

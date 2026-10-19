@@ -148,7 +148,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("🤖 AI Job Agent Starting...\n")
+	fmt.Printf("🤖 matchmentor Starting...\n")
 	fmt.Printf("   Task: %s\n", task)
 	fmt.Printf("   Model: %s at %s\n", cfg.ModelName, cfg.ModelURL)
 	fmt.Printf("   Profile: %s\n", cfg.ProfileDir)
@@ -170,7 +170,7 @@ func main() {
 }
 
 func runInteractiveMode(cfg types.Config) {
-	fmt.Println("🤖 AI Job Agent - Interactive Mode")
+	fmt.Println("🤖 matchmentor - Interactive Mode")
 	fmt.Println("Type 'quit' or 'exit' to end")
 	fmt.Println()
 

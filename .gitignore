@@ -1,5 +1,6 @@
 # Local candidate data and browser session
 data/resume.local.json
+data/mentor.plan.json
 .ai-job-agent/
 .DS_Store
 scripts/.deepseek-bridge-path.local

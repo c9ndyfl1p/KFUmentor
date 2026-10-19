@@ -121,6 +121,14 @@ func Start(cfg types.Config, address string) error {
 	mux.HandleFunc("POST /api/resume/confirm", app.handleConfirmResume)
 	mux.HandleFunc("GET /api/profile/details", app.handleProfileDetails)
 	mux.HandleFunc("POST /api/hr/reply", app.handleDraftHRReply)
+	mux.HandleFunc("GET /api/mentor/plan", app.handleGetMentorPlan)
+	mux.HandleFunc("POST /api/mentor/plan", app.handleGenerateMentorPlan)
+	mux.HandleFunc("POST /api/mentor/step", app.handleUpdateMentorStep)
+	mux.HandleFunc("POST /api/mentor/assessment", app.handleMentorAssessment)
+	mux.HandleFunc("POST /api/mentor/resume", app.handleMentorTailorResume)
+	mux.HandleFunc("POST /api/mentor/exercise", app.handleMentorExercise)
+	mux.HandleFunc("POST /api/mentor/exercise/review", app.handleMentorExerciseReview)
+	mux.HandleFunc("POST /api/mentor/interview", app.handleMentorInterview)
 	mux.HandleFunc("GET /api/state", app.handleState)
 	mux.HandleFunc("GET /api/deepseek/status", app.handleDeepSeekStatus)
 	mux.HandleFunc("POST /api/run", app.handleRun)
@@ -134,7 +142,7 @@ func Start(cfg types.Config, address string) error {
 		Handler:           app.localOnly(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	log.Printf("AI Job Agent is ready at http://%s", address)
+	log.Printf("matchmentor is ready at http://%s", address)
 	return httpServer.ListenAndServe()
 }
 

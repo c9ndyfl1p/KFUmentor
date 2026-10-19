@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f2f4f1">
-  <title>AI Job Agent · Локальная панель</title>
+  <title>matchmentor · Карьерный поиск с ментором</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
  <script src="/static/resume.js" defer></script>
@@ -22,41 +22,31 @@
     </div>
   </dialog>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="AI Job Agent — главная">
-      <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M5 18.5 12 4l7 14.5M8 13h8M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <a class="brand" href="/" aria-label="matchmentor — главная">
+      <span class="brand-logo-window" aria-hidden="true">
+        <img src="/static/matchmentor-logo.png" alt="" class="brand-logo">
       </span>
-      <span>AI Job Agent</span>
     </a>
     <nav class="primary-nav" aria-label="Разделы приложения">
-      <a href="#search-section">Поиск</a>
-      <a href="#activity-title">Ход работы</a>
-      <a href="#hr-title">Ответ HR</a>
-      <a href="#profile-title">Профиль</a>
+      <a href="#search-section" data-app-section="search">Поиск</a>
+      <a href="#hr-section" data-app-section="hr">Ответ HR</a>
+      <a href="#mentor-section" data-app-section="mentor">Ментор</a>
+      <a href="#profile-section" data-app-section="profile">Профиль</a>
     </nav>
     <span class="local-badge"><span class="local-dot"></span>Только на этом компьютере</span>
   </header>
 
   <main class="page-shell">
-    <section class="intro">
-      <div>
-        <p class="eyebrow">ВАШ ЛОКАЛЬНЫЙ ПОМОЩНИК</p>
-        <h1>Поиск работы<br class="mobile-break"> без лишней суеты</h1>
-        <p class="intro-copy">Задайте направление — агент найдёт вакансии и оценит, насколько они подходят вашему профилю.</p>
-      </div>
-      <div id="status-chip" class="status-chip" aria-live="polite">
-        <span class="status-dot"></span><span id="status-text">Подключаюсь…</span>
-      </div>
-    </section>
-
     <div class="workspace">
       <div class="primary-column">
-        <section class="card search-card" id="search-section" aria-labelledby="search-title">
+        <section class="card search-card" id="search-section" data-view="search" aria-labelledby="search-title">
           <div class="card-heading">
-            <div class="step-icon" aria-hidden="true">1</div>
             <div>
               <h2 id="search-title">Что ищем?</h2>
               <p>Опишите должность, город или условия</p>
+            </div>
+            <div id="status-chip" class="status-chip" aria-live="polite">
+              <span class="status-dot"></span><span id="status-text">Подключаюсь…</span>
             </div>
           </div>
           <form id="run-form">
@@ -114,9 +104,8 @@
           </form>
         </section>
 
-        <section class="card activity-card" id="activity-section" aria-labelledby="activity-title">
+        <section class="card activity-card" id="activity-section" data-view="search" aria-labelledby="activity-title">
           <div class="card-heading activity-heading">
-            <div class="step-icon step-icon-muted" aria-hidden="true">2</div>
             <div class="activity-title-wrap">
               <h2 id="activity-title">Ход поиска</h2>
               <p id="activity-caption">Здесь появится статус и результат последнего запуска</p>
@@ -127,7 +116,7 @@
           <p id="activity-message" class="activity-message" role="status" aria-live="polite" hidden></p>
         </section>
 
-        <section class="card hr-card" id="hr-section" aria-labelledby="hr-title">
+        <section class="card hr-card" id="hr-section" data-view="hr" aria-labelledby="hr-title">
           <div class="card-heading">
             <div class="step-icon step-icon-muted" aria-hidden="true">HR</div>
             <div>
@@ -157,11 +146,108 @@
             </div>
           </form>
         </section>
+
+        <section class="card mentor-card" id="mentor-section" data-view="mentor" aria-labelledby="mentor-title">
+          <div class="card-heading">
+            <div>
+              <h2 id="mentor-title">Карьерный ментор</h2>
+              <p>Оценка навыков, развитие и подготовка к собеседованиям</p>
+            </div>
+          </div>
+
+          <section class="mentor-module" aria-labelledby="mentor-assessment-title">
+            <div class="mentor-module-heading">
+              <div><span class="mentor-label">01 · ДИАГНОСТИКА</span><h3 id="mentor-assessment-title">Оценка навыков</h3></div>
+              <span class="mentor-module-note">Можно добавить текст вакансии</span>
+            </div>
+            <form id="mentor-assessment-form">
+              <label class="field-label" for="mentor-vacancy">Целевая вакансия <span class="label-hint">необязательно</span></label>
+              <textarea id="mentor-vacancy" rows="3" maxlength="16000" placeholder="Вставьте описание вакансии или оставьте поле пустым для общей оценки профиля"></textarea>
+              <div id="mentor-questions-wrap" class="mentor-questions-wrap" hidden>
+                <div id="mentor-questions" class="mentor-questions"></div>
+                <label class="field-label" for="mentor-clarifications">Ваши уточнения</label>
+                <textarea id="mentor-clarifications" rows="3" maxlength="4000" placeholder="Ответьте на вопросы ментора: приведите примеры, цифры или уточните, что вы уже умеете"></textarea>
+              </div>
+              <div class="mentor-form-footer">
+                <span id="mentor-assessment-status" class="save-message" aria-live="polite"></span>
+                <button class="button button-secondary" id="mentor-assess" type="submit">Оценить навыки</button>
+              </div>
+            </form>
+            <div id="mentor-assessment-result" class="mentor-result" hidden></div>
+            <div id="mentor-tailor-actions" class="mentor-tailor-actions" hidden>
+              <button class="button button-secondary" id="mentor-tailor-resume" type="button">Адаптировать резюме под вакансию</button>
+              <div id="mentor-tailored-wrap" class="mentor-tailored-wrap" hidden>
+                <label class="field-label" for="mentor-tailored-draft">Черновик резюме <span class="label-hint">проверьте факты и отредактируйте</span></label>
+                <textarea id="mentor-tailored-draft" rows="10"></textarea>
+                <div class="mentor-form-footer"><span id="mentor-tailor-status" class="save-message" aria-live="polite"></span><button class="button button-secondary" id="mentor-copy-tailored" type="button">Скопировать черновик</button></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="mentor-module" id="mentor-plan" aria-labelledby="mentor-plan-title">
+            <div class="mentor-module-heading">
+              <div><span class="mentor-label">02 · РАЗВИТИЕ</span><h3 id="mentor-plan-title">План на ближайшие недели</h3></div>
+              <button class="button button-secondary button-compact" id="mentor-generate" type="button">Составить план</button>
+            </div>
+            <div class="mentor-intro"><div><span class="mentor-label">ВАША ЦЕЛЬ</span><p id="mentor-goal">Сохраните профиль и составьте план развития.</p></div></div>
+            <div id="mentor-plan-status" class="mentor-status" role="status" aria-live="polite"></div>
+            <div id="mentor-progress-wrap" class="mentor-progress-wrap" hidden>
+              <div class="mentor-progress-copy"><strong id="mentor-progress-count">0 из 0 шагов</strong><span id="mentor-progress-percent">0%</span></div>
+              <div class="mentor-progress-track" role="progressbar" aria-label="Прогресс плана" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="mentor-progress-bar"></span></div>
+            </div>
+            <div id="mentor-steps" class="mentor-steps"></div>
+          </section>
+
+          <section class="mentor-module" aria-labelledby="mentor-training-title">
+            <div class="mentor-module-heading">
+              <div><span class="mentor-label">03 · ПРАКТИКА</span><h3 id="mentor-training-title">Обучение с обратной связью</h3></div>
+              <span class="mentor-module-note">Задание на 20–60 минут</span>
+            </div>
+            <form id="mentor-exercise-form" class="mentor-exercise-form">
+              <label class="field-label" for="mentor-topic">Тема <span class="label-hint">необязательно</span></label>
+              <div class="mentor-topic-row"><input id="mentor-topic" maxlength="200" placeholder="Например: аналитика воронки, SQL, кейс для портфолио"><button class="button button-secondary" id="mentor-create-exercise" type="submit">Получить задание</button></div>
+            </form>
+            <div id="mentor-exercise" class="mentor-exercise" hidden>
+              <h4 id="mentor-exercise-title"></h4>
+              <p id="mentor-exercise-prompt"></p>
+              <div><strong>Как будет оцениваться</strong><ul id="mentor-exercise-criteria"></ul></div>
+              <form id="mentor-exercise-answer-form">
+                <label class="field-label" for="mentor-answer">Ваш ответ или решение</label>
+                <textarea id="mentor-answer" rows="5" maxlength="10000" placeholder="Опишите ход решения, приложите текст или вставьте ссылку и краткое описание проекта"></textarea>
+                <div class="mentor-form-footer"><span id="mentor-exercise-status" class="save-message" aria-live="polite"></span><button class="button button-primary" id="mentor-review-answer" type="submit">Разобрать ответ</button></div>
+              </form>
+              <div id="mentor-review" class="mentor-review" hidden></div>
+            </div>
+          </section>
+
+          <section class="mentor-module" aria-labelledby="mentor-interview-title">
+            <div class="mentor-module-heading">
+              <div><span class="mentor-label">04 · СОБЕСЕДОВАНИЕ</span><h3 id="mentor-interview-title">Тренировочное интервью</h3></div>
+              <button class="button button-secondary button-compact" id="mentor-interview-start" type="button">Начать интервью</button>
+            </div>
+            <p class="mentor-interview-intro">Отвечайте как на настоящем собеседовании. После каждого ответа ментор даст оценку и задаст следующий вопрос.</p>
+            <div id="mentor-interview-status" class="mentor-status" role="status" aria-live="polite"></div>
+            <div id="mentor-interview-current" class="mentor-interview-current" hidden></div>
+            <div id="mentor-interview-turns" class="mentor-interview-turns"></div>
+            <form id="mentor-interview-form" hidden>
+              <label class="field-label" for="mentor-interview-answer">Ваш ответ</label>
+              <textarea id="mentor-interview-answer" rows="4" maxlength="6000" placeholder="Напишите ответ так, как сказали бы его вслух"></textarea>
+              <div class="mentor-form-footer"><span></span><button class="button button-primary" id="mentor-interview-submit" type="submit">Отправить ответ</button></div>
+            </form>
+            <button class="text-button mentor-interview-reset" id="mentor-interview-reset" type="button" hidden>Завершить интервью</button>
+          </section>
+
+          <section class="mentor-module mentor-search-links" aria-label="Инструменты поиска работы">
+            <div><span class="mentor-label">05 · ПОИСК РАБОТЫ</span><h3>Примените план на практике</h3></div>
+            <p>Подходящие вакансии и их оценка появятся в ходе поиска. Ответ HR можно подготовить по переписке и вашему профилю.</p>
+            <div class="mentor-quick-links"><a class="button button-secondary" href="#search-section">Перейти к поиску вакансий</a><a class="button button-secondary" href="#hr-section">Подготовить ответ HR</a><a class="button button-secondary" href="#profile-section">Обновить профиль</a></div>
+          </section>
+          <p class="mentor-footnote">Для работы ментора выбранной модели передаются нужные поля профиля, текст вакансии и ваши ответы. План, задания и прогресс сохраняются локально. Проверяйте советы и не вставляйте чувствительные данные.</p>
+        </section>
       </div>
 
-      <aside class="card profile-card" id="profile-section" aria-labelledby="profile-title">
+      <aside class="card profile-card" id="profile-section" data-view="profile" aria-labelledby="profile-title">
         <div class="card-heading">
-          <div class="step-icon" aria-hidden="true">3</div>
           <div>
             <h2 id="profile-title">Ваш профиль</h2>
             <p>Данные сохраняются только локально</p>
@@ -194,10 +280,16 @@
             <button class="button button-secondary" type="submit" id="save-profile">Сохранить профиль</button>
           </div>
         </form>
-        <div class="profile-footnote"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4 5v4.2c0 4 2.5 6.8 6 8.3 3.5-1.5 6-4.3 6-8.3V5l-6-2.5Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Профиль не отправляется в облако. Он нужен агенту для оценки вакансий и писем.</div>
+        <div class="profile-footnote"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4 5v4.2c0 4 2.5 6.8 6 8.3 3.5-1.5 6-4.3 6-8.3V5l-6-2.5Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Профиль хранится на этом компьютере. Для оценки вакансий, подготовки писем и карьерного плана нужные поля передаются выбранной AI-модели.</div>
       </aside>
     </div>
-    <footer class="page-footer">AI Job Agent · hh.ru · Локальная версия</footer>
+    <footer class="page-footer">
+      <span>matchmentor · hh.ru · Локальная версия</span>
+      <nav aria-label="Документы о персональных данных">
+        <a href="/static/personal-data-policy.html" target="_blank" rel="noopener noreferrer">Политика обработки ПДн</a>
+        <a href="/static/personal-data-consent.html" target="_blank" rel="noopener noreferrer">Согласие на обработку ПДн</a>
+      </nav>
+    </footer>
   </main>
 
   <dialog id="resume-dialog" class="resume-dialog" aria-labelledby="resume-title">
@@ -218,7 +310,7 @@
         <input id="resume-file" name="resume" type="file" accept=".pdf,.docx,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/json" required>
       </label>
       <p id="resume-file-name" class="resume-file-name" aria-live="polite">Файл не выбран</p>
-      <p class="resume-local-note">Текст обрабатывается на этом компьютере. PDF-сканы и старый формат DOC пока не поддерживаются.</p>
+      <p class="resume-local-note">Резюме разбирает выбранная AI-модель. Если модель облачная, текст передаётся её провайдеру. PDF-сканы и старый формат DOC пока не поддерживаются.</p>
       </div>
       <section id="resume-preview" hidden aria-label="Проверка данных резюме">
         <p class="resume-review-note">Проверьте данные перед сохранением. Текущий профиль пока не изменён.</p>
