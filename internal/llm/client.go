@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -13,6 +14,7 @@ import (
 type OllamaClient struct {
 	BaseURL    string
 	ModelName  string
+	APIKey     string
 	HTTPClient *http.Client
 }
 
@@ -48,6 +50,7 @@ func NewOllamaClient(baseURL, modelName string) *OllamaClient {
 	return &OllamaClient{
 		BaseURL:   baseURL,
 		ModelName: modelName,
+		APIKey:    os.Getenv("AI_JOB_AGENT_MODEL_API_KEY"),
 		HTTPClient: &http.Client{
 			Timeout: 180 * time.Second,
 		},
@@ -223,7 +226,15 @@ func (c *OllamaClient) openAIChatWithMaxTokens(messages []ChatMessage, jsonOnly 
 		return "", fmt.Errorf("marshal chat request: %w", err)
 	}
 	endpoint := strings.TrimRight(c.BaseURL, "/") + "/chat/completions"
-	response, err := c.HTTPClient.Post(endpoint, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("create chat request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	response, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("HTTP request: %w", err)
 	}

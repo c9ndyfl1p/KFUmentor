@@ -4,6 +4,7 @@ const profileForm = $("#profile-form");
 const runButton = $("#run-button");
 const stopButton = $("#stop-button");
 const loginButton = $("#login-button");
+const deepseekLoginButton = $("#deepseek-login-button");
 const vacancyCards = $("#vacancy-cards");
 const activityMessage = $("#activity-message");
 const statusChip = $("#status-chip");
@@ -344,6 +345,7 @@ taskForm.addEventListener("submit", async (event) => {
     const state = await request("/api/state").catch(() => ({ running: false }));
     runButton.disabled = state.running;
     loginButton.disabled = state.running;
+    deepseekLoginButton.disabled = state.running;
     label.textContent = state.running ? "Выполняется…" : "Начать поиск";
   }
 });
@@ -364,6 +366,21 @@ loginButton.addEventListener("click", async () => {
   }
 });
 
+deepseekLoginButton.addEventListener("click", async () => {
+  deepseekLoginButton.disabled = true;
+  deepseekLoginButton.textContent = "Открываю DeepSeek…";
+  try {
+    await request("/api/deepseek/login", { method: "POST" });
+    showActivityMessage("Открыл окно DeepSeek. Войдите в аккаунт вручную; поиск не запустится.");
+  } catch (error) {
+    showActivityMessage(error.message, true);
+  } finally {
+    const state = await request("/api/state").catch(() => ({ running: false }));
+    deepseekLoginButton.disabled = state.running;
+    deepseekLoginButton.textContent = "Войти в DeepSeek";
+  }
+});
+
 stopButton.addEventListener("click", async () => {
   stopButton.disabled = true;
   stopButton.textContent = "Останавливаю…";
@@ -377,6 +394,7 @@ stopButton.addEventListener("click", async () => {
     stopButton.disabled = !state.running || /останавливаю/i.test(state.status || "");
     stopButton.textContent = /останавливаю/i.test(state.status || "") ? "Останавливаю…" : "Остановить";
     loginButton.disabled = Boolean(state.running);
+    deepseekLoginButton.disabled = Boolean(state.running);
   }
 });
 
@@ -388,6 +406,8 @@ async function refreshState() {
   statusChip.classList.toggle("is-error", !state.running && /ошибк|не удалось/i.test(state.status || ""));
   runButton.disabled = Boolean(state.running);
   runButton.querySelector("span").textContent = state.running ? "Выполняется…" : "Начать поиск";
+  loginButton.disabled = Boolean(state.running);
+  deepseekLoginButton.disabled = Boolean(state.running);
   stopButton.hidden = !state.running;
   stopButton.disabled = /останавливаю/i.test(state.status || "");
   stopButton.textContent = stopButton.disabled ? "Останавливаю…" : "Остановить";

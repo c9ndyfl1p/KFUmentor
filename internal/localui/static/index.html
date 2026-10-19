@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5f8fb">
+  <meta name="theme-color" content="#f2f4f1">
   <title>AI Job Agent · Локальная панель</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
@@ -17,15 +17,21 @@
       </span>
       <span>AI Job Agent</span>
     </a>
-    <span class="local-badge"><span class="local-dot"></span>Работает на этом компьютере</span>
+    <nav class="primary-nav" aria-label="Разделы приложения">
+      <a href="#search-section">Поиск</a>
+      <a href="#activity-title">Ход работы</a>
+      <a href="#hr-title">Ответ HR</a>
+      <a href="#profile-title">Профиль</a>
+    </nav>
+    <span class="local-badge"><span class="local-dot"></span>Только на этом компьютере</span>
   </header>
 
   <main class="page-shell">
     <section class="intro">
       <div>
-        <p class="eyebrow">ЛОКАЛЬНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ</p>
-        <h1>Поиск работы<br class="mobile-break"> без рутины</h1>
-        <p class="intro-copy">Задайте направление поиска. Агент найдёт вакансии и оценит их по вашему профилю.</p>
+        <p class="eyebrow">ВАШ ЛОКАЛЬНЫЙ ПОМОЩНИК</p>
+        <h1>Поиск работы<br class="mobile-break"> без лишней суеты</h1>
+        <p class="intro-copy">Задайте направление — агент найдёт вакансии и оценит, насколько они подходят вашему профилю.</p>
       </div>
       <div id="status-chip" class="status-chip" aria-live="polite">
         <span class="status-dot"></span><span id="status-text">Подключаюсь…</span>
@@ -34,7 +40,7 @@
 
     <div class="workspace">
       <div class="primary-column">
-        <section class="card search-card" aria-labelledby="search-title">
+        <section class="card search-card" id="search-section" aria-labelledby="search-title">
           <div class="card-heading">
             <div class="step-icon" aria-hidden="true">1</div>
             <div>
@@ -62,16 +68,25 @@
                 <span class="switch" aria-hidden="true"></span>
               </label>
             </div>
-            <label class="field-label" for="vacancy-limit">Лимит поиска вакансий</label>
-            <input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint">
-            <small id="vacancy-limit-hint" class="city-hint">Максимум вакансий, которые агент найдёт и оценит. При автооткликах лимит откликов задаётся отдельно.</small>
-            <label class="field-label" for="application-target">Желаемое количество откликов</label>
-            <input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint">
-            <small id="application-target-hint" class="city-hint">Включите «Отправлять отклики», чтобы задать количество. Поиск без отправки остаётся доступным.</small>
+            <div class="limits-grid">
+              <div class="limit-field">
+                <label class="field-label" for="vacancy-limit">Лимит вакансий</label>
+                <input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint">
+                <small id="vacancy-limit-hint" class="city-hint">Сколько вакансий проверить</small>
+              </div>
+              <div class="limit-field">
+                <label class="field-label" for="application-target">Цель по откликам</label>
+                <input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint">
+                <small id="application-target-hint" class="city-hint">Доступно при включённых откликах</small>
+              </div>
+            </div>
             <div id="apply-note" class="apply-note" hidden>Отклики отправляются от вашего аккаунта hh.ru. Проверьте профиль и убедитесь, что вы вошли в браузере.</div>
             <div class="login-row">
-              <button class="button button-secondary" id="login-button" type="button">Только войти на hh.ru</button>
-              <small>Откроется отдельное окно. После входа агент не продолжит поиск.</small>
+              <div class="login-actions">
+                <button class="button button-secondary" id="login-button" type="button">Только войти на hh.ru</button>
+                <button class="button button-secondary" id="deepseek-login-button" type="button">Войти в DeepSeek</button>
+              </div>
+              <small>Вход в DeepSeek откроет окно модели. Поиск автоматически не запустится.</small>
             </div>
             <div class="form-footer">
               <span class="privacy-hint"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4 5v4.2c0 4 2.5 6.8 6 8.3 3.5-1.5 6-4.3 6-8.3V5l-6-2.5Zm0 4v4m0 2.8h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Поиск выполняется на вашем компьютере</span>
@@ -83,7 +98,7 @@
           </form>
         </section>
 
-        <section class="card activity-card" aria-labelledby="activity-title">
+        <section class="card activity-card" id="activity-section" aria-labelledby="activity-title">
           <div class="card-heading activity-heading">
             <div class="step-icon step-icon-muted" aria-hidden="true">2</div>
             <div class="activity-title-wrap">
@@ -96,7 +111,7 @@
           <p id="activity-message" class="activity-message" role="status" aria-live="polite" hidden></p>
         </section>
 
-        <section class="card hr-card" aria-labelledby="hr-title">
+        <section class="card hr-card" id="hr-section" aria-labelledby="hr-title">
           <div class="card-heading">
             <div class="step-icon step-icon-muted" aria-hidden="true">HR</div>
             <div>
@@ -128,7 +143,7 @@
         </section>
       </div>
 
-      <aside class="card profile-card" aria-labelledby="profile-title">
+      <aside class="card profile-card" id="profile-section" aria-labelledby="profile-title">
         <div class="card-heading">
           <div class="step-icon" aria-hidden="true">3</div>
           <div>
@@ -172,7 +187,7 @@
   <dialog id="resume-dialog" class="resume-dialog" aria-labelledby="resume-title">
     <form id="resume-upload-form" class="resume-dialog-content">
       <div class="resume-dialog-heading">
-        <div class="resume-file-icon" aria-hidden="true">↥</div>
+        <div class="resume-file-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <button type="button" class="dialog-close" id="close-resume" aria-label="Закрыть окно">×</button>
         <p class="eyebrow">ПРОФИЛЬ КАНДИДАТА</p>
         <h2 id="resume-title">Прикрепить резюме</h2>
@@ -180,7 +195,7 @@
       </div>
       <div id="resume-upload-step">
       <label class="resume-dropzone" id="resume-dropzone" for="resume-file">
-        <span class="upload-cloud" aria-hidden="true">↑</span>
+        <span class="upload-cloud" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         <strong>Перетащите файл сюда</strong>
         <span>или нажмите, чтобы выбрать на компьютере</span>
         <span class="resume-format">PDF с текстом, Word DOCX, JSON · до 10 МБ</span>

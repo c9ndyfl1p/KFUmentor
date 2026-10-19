@@ -40,6 +40,9 @@ func (c *OllamaClient) GenerateStructured(ctx context.Context, prompt, system st
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.openAICompatible() && c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return "", err

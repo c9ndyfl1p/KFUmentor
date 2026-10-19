@@ -1,6 +1,7 @@
 package localui
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -120,6 +121,7 @@ func Start(cfg types.Config, address string) error {
 	mux.HandleFunc("GET /api/state", app.handleState)
 	mux.HandleFunc("POST /api/run", app.handleRun)
 	mux.HandleFunc("POST /api/login", app.handleLogin)
+	mux.HandleFunc("POST /api/deepseek/login", app.handleDeepSeekLogin)
 	mux.HandleFunc("POST /api/cancel", app.handleCancel)
 	mux.HandleFunc("POST /api/clear", app.handleClear)
 
@@ -451,6 +453,41 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "Открываю hh.ru для входа"})
+}
+
+func (s *server) handleDeepSeekLogin(w http.ResponseWriter, r *http.Request) {
+	apiKey := os.Getenv("AI_JOB_AGENT_MODEL_API_KEY")
+	if apiKey == "" {
+		writeError(w, http.StatusServiceUnavailable, "Запустите приложение через scripts/run-with-deepseek.sh")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:8000/session/open-login", nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось подготовить открытие DeepSeek")
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "Мост DeepSeek недоступен. Проверьте, что он запущен на localhost:8000.")
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var response struct {
+			Detail string `json:"detail"`
+		}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&response)
+		if response.Detail == "" {
+			response.Detail = "Не удалось открыть окно DeepSeek."
+		}
+		writeError(w, http.StatusBadGateway, response.Detail)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "Окно DeepSeek открыто для входа"})
 }
 
 func (s *server) beginTask(status string) bool {

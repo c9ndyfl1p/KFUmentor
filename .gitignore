@@ -2,6 +2,7 @@
 data/resume.local.json
 .ai-job-agent/
 .DS_Store
+scripts/.deepseek-bridge-path.local
 
 # Personal examples of cover letters
 data/cover-letter-examples.local.json
