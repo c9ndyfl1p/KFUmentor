@@ -99,7 +99,15 @@
               </div>
               <form id="run-form">
                 <label class="visually-hidden" for="task">Опишите работу, которую ищете</label>
-                <textarea class="search-query" id="task" name="task" rows="3" maxlength="2000" placeholder="Опишите работу, которую ищете…" required></textarea>
+                <textarea class="search-query" id="task" name="task" rows="1" maxlength="2000" placeholder="Например: бизнес-аналитик или продуктовый аналитик…" required></textarea>
+                <div class="resume-match-panel">
+                  <div class="resume-match-copy"><strong>Подобрать вакансии по резюме</strong><small>ИИ учтёт ваш опыт, проекты и навыки. Отклики останутся на ваше решение.</small></div>
+                  <button class="button button-secondary" id="match-resume-button" type="button" aria-describedby="resume-match-hint">
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m12.5 12.5 4 4M6 8.5h5M8.5 6v5"/></svg>
+                    Подобрать вакансии
+                  </button>
+                  <span class="visually-hidden" id="resume-match-hint">Поиск использует ваш сохранённый профиль и не отправляет отклики.</span>
+                </div>
                 <div class="search-filters">
                   <div class="search-filter">
                     <label class="field-label" for="city">ГОРОД ИЛИ РЕГИОН</label>

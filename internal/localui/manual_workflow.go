@@ -100,7 +100,7 @@ func (s *server) handleVacancyAction(w http.ResponseWriter, r *http.Request) {
 			if e == nil {
 				return fmt.Errorf("вакансия не найдена")
 			}
-			if e.Submission != "" || !(e.Status == "review" || e.Status == "draft_ready" || e.Status == "draft_error") {
+			if e.Submission != "" || !(e.Status == "assessed" || e.Status == "review" || e.Status == "draft_ready" || e.Status == "draft_error") {
 				return fmt.Errorf("действие уже выполняется или недоступно")
 			}
 			e.Status = "dismissed"

@@ -403,8 +403,8 @@ func (s *server) handleState(w http.ResponseWriter, r *http.Request) {
 		if run := st.Runs[runID]; run != nil {
 			if run.Target > 0 {
 				state.Summary = fmt.Sprintf("📨 ОТКЛИКИ: %d из %d (ручные и автоматические)", run.Sent, run.Target)
-			} else if run.Sent > 0 {
-				state.Summary = fmt.Sprintf("📨 Отправлено вручную: %d", run.Sent)
+			} else {
+				state.Summary = fmt.Sprintf("📨 ОТКЛИКИ: %d (ручные и автоматические)", run.Sent)
 			}
 		}
 	}

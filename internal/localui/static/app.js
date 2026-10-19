@@ -2,6 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const taskForm = $("#run-form");
 const profileForm = $("#profile-form");
 const runButton = $("#run-button");
+const matchResumeButton = $("#match-resume-button");
 const stopButton = $("#stop-button");
 const loginButton = $("#login-button");
 const deepseekLoginButton = $("#deepseek-login-button");
@@ -20,6 +21,16 @@ let overviewState = null;
 let overviewPlan = null;
 let overviewProfile = null;
 let savedProfileSnapshot = null;
+
+function resizeSearchQuery() {
+  const field = $("#task");
+  field.style.height = "auto";
+  field.style.height = `${Math.min(field.scrollHeight, 240)}px`;
+  field.classList.toggle("is-overflowing", field.scrollHeight > 240);
+}
+
+$("#task").addEventListener("input", resizeSearchQuery);
+resizeSearchQuery();
 
 const sectionForHash = new Map([
   ["overview-section", "overview"], ["overview-title", "overview"],
@@ -733,7 +744,11 @@ function showActivityMessage(message = "", isError = false) {
 
 function renderVacancyCards(cards, running, minimumScore = 0) {
   vacancyCards.replaceChildren();
-  const matchingCards = cards.filter((item) => item.canDraft || item.canSend || item.canRetry || item.score >= minimumScore || ["running", "applying", "error", "stopped", "queued", "ready", "recommended", "success", "warning"].includes(item.status));
+  const matchingCards = cards.filter((item) => {
+    const score = Number(item.score || 0);
+    if (score > 0) return score >= minimumScore;
+    return running && ["running", "queued"].includes(item.status);
+  });
   if (!matchingCards.length) {
     const empty = document.createElement("p");
     empty.className = "activity-empty";
@@ -1075,8 +1090,7 @@ $("#auto-apply").addEventListener("change", (event) => {
   $("#application-target-hint").textContent = event.target.checked ? "От 1 до 100. Агент остановится после нужного числа успешных откликов. Если подходящих вакансий меньше, покажет недобор." : "Включите «Отправлять отклики», чтобы задать количество. Поиск без отправки остаётся доступным.";
 });
 
-taskForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function launchSearch(task, profileMatch = false) {
   if (cityField.value.trim() && !areaIDField.value) {
     cityHint.textContent = "Выберите город из подсказок или очистите поле.";
     cityHint.classList.add("is-error");
@@ -1084,17 +1098,18 @@ taskForm.addEventListener("submit", async (event) => {
     return;
   }
   runButton.disabled = true;
+  matchResumeButton.disabled = true;
   const label = runButton.querySelector("span");
   label.textContent = "Запускаю…";
   try {
     await request("/api/run", {
       method: "POST",
       body: JSON.stringify({
-        task: $("#task").value,
+        task,
         areaId: Number(areaIDField.value || 0),
-        autoApply: $("#auto-apply").checked,
+        autoApply: !profileMatch && $("#auto-apply").checked,
  applyByScore: !$("#application-policy").checked,
-        applicationTarget: $("#auto-apply").checked ? Number($("#application-target").value) : 0,
+        applicationTarget: !profileMatch && $("#auto-apply").checked ? Number($("#application-target").value) : 0,
         vacancyLimit: Number($("#vacancy-limit").value),
         minimumScore: Number($("#minimum-score").value),
         visible: $("#visible-browser").checked,
@@ -1107,10 +1122,36 @@ taskForm.addEventListener("submit", async (event) => {
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
     runButton.disabled = state.running;
+    matchResumeButton.disabled = state.running;
     loginButton.disabled = state.running;
     deepseekLoginButton.disabled = state.running;
     label.textContent = state.running ? "Выполняется…" : "Начать поиск";
   }
+}
+
+taskForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  launchSearch($("#task").value);
+});
+
+matchResumeButton.addEventListener("click", () => {
+  const profile = savedProfileSnapshot || {};
+  const skills = Array.isArray(profile.skills) ? profile.skills : [];
+  const hasResume = Boolean(profile.title?.trim() || profile.summary?.trim() || skills.length || profile.experience?.trim() || profile.projects?.trim());
+  if (!hasResume) {
+    setMessage($("#profile-message"), "Сначала прикрепите резюме или заполните профиль и сохраните его.", true);
+    location.hash = "profile-section";
+    return;
+  }
+  const role = profile.title?.trim();
+  const skillsText = skills.slice(0, 4).join(" ");
+  const searchDirection = role || skillsText || profile.summary?.trim() || profile.experience?.trim();
+  if (!searchDirection) {
+    setMessage($("#profile-message"), "Добавьте желаемую должность или заполните навыки в профиле.", true);
+    location.hash = "profile-section";
+    return;
+  }
+  launchSearch(searchDirection, true);
 });
 
 loginButton.addEventListener("click", async () => {
@@ -1170,6 +1211,7 @@ async function refreshState() {
   statusChip.classList.toggle("is-done", !state.running && state.status === "Поиск завершён");
   statusChip.classList.toggle("is-error", !state.running && /ошибк|не удалось/i.test(state.status || ""));
   runButton.disabled = Boolean(state.running);
+  matchResumeButton.disabled = Boolean(state.running);
   runButton.querySelector("span").textContent = state.running ? "Выполняется…" : "Начать поиск";
   loginButton.disabled = Boolean(state.running);
   deepseekLoginButton.disabled = Boolean(state.running);

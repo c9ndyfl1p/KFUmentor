@@ -77,6 +77,7 @@ func (a *AIOrchestrator) generateCoverLetter(title, company string, job types.Jo
 		return "", err
 	}
 	input := string(data)
+	var unsupportedClaims []string
 	for attempt := 0; attempt < 2; attempt++ {
 		letter, err := a.llmClient.GenerateWithBudget(input, prompt.LetterSystem, 600, 90*time.Second)
 		if err != nil {
@@ -93,6 +94,7 @@ func (a *AIOrchestrator) generateCoverLetter(title, company string, job types.Jo
 		if review.Supported != nil && *review.Supported && len(review.UnsupportedClaims) == 0 {
 			return letter, nil
 		}
+		unsupportedClaims = append([]string(nil), review.UnsupportedClaims...)
 		log.Printf("⚠️ Проверка письма: неподтверждённых утверждений — %d; исправляю текст", len(review.UnsupportedClaims))
 		correction, _ := json.Marshal(map[string]interface{}{
 			"original_data":             json.RawMessage(data),
@@ -102,8 +104,7 @@ func (a *AIOrchestrator) generateCoverLetter(title, company string, job types.Jo
 		})
 		input = string(correction)
 	}
-	log.Println("⚠️ Модель не устранила неподтверждённые сведения: использую короткое письмо по фактам профиля")
-	return buildCoverLetterFallback(detailed.Title, detailed.Company, detailed.Snippet, profile.Skills, profile.Summary), nil
+	return "", &letterCheckFailure{Err: fmt.Errorf("после исправления остались неподтверждённые утверждения: %s", strings.Join(unsupportedClaims, "; "))}
 }
 
 func cleanCoverLetter(letter string) (string, error) {

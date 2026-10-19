@@ -80,7 +80,9 @@ func JobID(raw string) string {
 	return strconv.FormatUint(n, 10)
 }
 func (e *Entry) CanDraft() bool {
-	return e.Submission == "" && !e.ByScore && e.Recommendation == "review" && e.Score >= e.Threshold && (e.Status == "review" || e.Status == "draft_error" || e.Status == "draft_ready")
+	manualRecommendation := e.Recommendation == "apply" || (e.Recommendation == "review" && !e.ByScore)
+	manualStatus := e.Status == "assessed" || e.Status == "review" || e.Status == "draft_error" || e.Status == "draft_ready"
+	return e.Submission == "" && manualRecommendation && e.Score >= e.Threshold && manualStatus
 }
 func (s *Store) Update(fn func(*State) error) error { return s.access(true, fn) }
 func (s *Store) access(write bool, fn func(*State) error) error {

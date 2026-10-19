@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mihnpro/Ai_agent_2/internal/llm"
@@ -32,6 +33,8 @@ type AIOrchestrator struct {
 	vacanciesAnalyzed      int
 	letterExamplesPath     string
 	jobDetails             map[string]types.Job
+	jobDetailsMu           sync.RWMutex
+	detailLoadMu           sync.Mutex
 	llmClient              *llm.OllamaClient
 	page                   playwright.Page
 	context                playwright.BrowserContext
@@ -509,10 +512,7 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 	if err != nil {
 		return "", err
 	}
-	if a.jobDetails == nil {
-		a.jobDetails = map[string]types.Job{}
-	}
-	a.jobDetails[job.URL] = detailed
+	a.cacheJobDetails(job.URL, detailed)
 	title, company := detailed.Title, detailed.Company
 	coverLetter := a.approvedLetter
 	if coverLetter == "" {
@@ -591,11 +591,7 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 		// "Добавить сопроводительное" action on the resulting response page.
 		// Support that flow instead of silently treating a bare response as a
 		// completed application with a letter.
-		log.Println("ℹ️ Поля письма в форме отклика нет; отправляю отклик и ищу «Добавить сопроводительное»")
-		if err := clickVisible(page, submitBtnSelectors); err != nil {
-			return "", fmt.Errorf("поле сопроводительного не найдено, не удалось отправить отклик: %w", err)
-		}
-		if err := waitForAnyVisible(page, []string{
+		bareSuccessSelectors := []string{
 			"[data-qa='vacancy-response-popup-success']",
 			"[data-qa='vacancy-response-success']",
 			"button:has-text('Вы откликнулись')",
@@ -603,11 +599,22 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 			"a:has-text('Перейти в чат')",
 			"button:has-text('Перейти в чат')",
 			"text=Резюме доставлено",
-		}, 8*time.Second); err != nil {
-			return "", fmt.Errorf("hh.ru не подтвердил отклик без письма; проверьте «Мои отклики» перед повтором: %w", err)
+			"button:has-text('Добавить сопроводительное')",
+			"text=Добавить сопроводительное",
 		}
-
-		bareConfirmed = true
+		if visibleAny(page, bareSuccessSelectors) {
+			log.Println("ℹ️ hh.ru уже принял отклик; перехожу в чат, чтобы добавить сопроводительное")
+			bareConfirmed = true
+		} else {
+			log.Println("ℹ️ Поля письма в форме отклика нет; отправляю отклик и ищу «Добавить сопроводительное»")
+			if err := clickVisible(page, submitBtnSelectors); err != nil {
+				return "", fmt.Errorf("поле сопроводительного не найдено, не удалось подтвердить отправку: %w", err)
+			}
+			if err := waitForAnyVisible(page, bareSuccessSelectors, 8*time.Second); err != nil {
+				return "", fmt.Errorf("hh.ru не подтвердил отклик без письма; проверьте «Мои отклики» перед повтором: %w", err)
+			}
+			bareConfirmed = true
+		}
 
 		// Prefer the direct chat action shown after an application. Some HH
 		// response dialogs do not show it, so fall back to the matching card in
@@ -787,6 +794,19 @@ func clickVisible(page playwright.Page, selectors []string) error {
 		}
 	}
 	return fmt.Errorf("не найдена видимая кнопка среди селекторов: %s", strings.Join(selectors, ", "))
+}
+
+func visibleAny(page playwright.Page, selectors []string) bool {
+	for _, selector := range selectors {
+		locator := page.Locator(selector)
+		count, _ := locator.Count()
+		for i := 0; i < count; i++ {
+			if visible, _ := locator.Nth(i).IsVisible(); visible {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func clickFirstVisible(locator playwright.Locator) error {
@@ -1046,6 +1066,7 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 	qualifiedCount := 0
 	analyzedCount := 0
 	nextCandidate := 0
+	const evaluationWorkers = 3
 	for qualifiedCount < target && analyzedCount < scanBudget {
 		if err := a.drainManualQueue(); err != nil {
 			return "", err
@@ -1056,47 +1077,45 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 		if nextCandidate >= len(candidates) {
 			continue
 		}
-		job := candidates[nextCandidate]
-		nextCandidate++
-		if !isRealVacancyURL(job.URL) {
-			continue
-		}
-		analyzedCount++
-		cardIndex := analyzedCount
-		log.Printf("🔍 Анализ вакансии %d/%d: %s | URL: %s", cardIndex, 0, job.Title, job.URL)
-		log.Println("🧠 Запрашиваю анализ у AI модели...")
-		evaluation, err := a.evaluateTracked(job)
-		if err != nil {
-			log.Printf("⚠️ Ошибка оценки: %v", err)
-			continue
-		}
-		if detailed, ok := a.jobDetails[job.URL]; ok {
-			job = detailed
-		}
-		a.lastEvaluatedJobs = append(a.lastEvaluatedJobs, job)
-		logEvaluationResult(evaluation)
-		if evaluation.MatchScore < minimumScore {
-			log.Printf("⏭️ Решение: пропустить (оценка: %d/10 ниже порога %d/10)", evaluation.MatchScore, minimumScore)
-			time.Sleep(time.Second)
-			continue
-		}
-
-		qualifiedCount++
-		status := "✅"
-		if !evaluation.IsRelevant {
-			status = "⏭️"
-		}
-		evaluations = append(evaluations, fmt.Sprintf("%s %s | %s | Оценка: %d/10 | %s",
-			status, job.Title, job.Company, evaluation.MatchScore, evaluation.Reason))
-		if evaluation.IsRelevant {
-			letter, err := a.generateCoverLetter(job.Title, job.Company, job)
-			if err != nil {
-				log.Printf("⚠️ Черновик письма не подготовлен: %v", err)
-			} else {
-				log.Printf("✉️ Черновик для «%s» (отдельно не отправлен):\n%s", job.Title, letter)
+		batch := make([]types.Job, 0, evaluationWorkers)
+		for nextCandidate < len(candidates) && len(batch) < evaluationWorkers && analyzedCount+len(batch) < scanBudget {
+			job := candidates[nextCandidate]
+			nextCandidate++
+			if isRealVacancyURL(job.URL) {
+				batch = append(batch, job)
 			}
 		}
-		time.Sleep(time.Second)
+		if len(batch) == 0 {
+			continue
+		}
+		startIndex := analyzedCount + 1
+		analyzedCount += len(batch)
+		log.Printf("🧠 Параллельно оцениваю %d вакансии (до %d одновременно)", len(batch), evaluationWorkers)
+		results := a.evaluateVacancyBatch(batch, startIndex)
+		for _, result := range results {
+			if result.err != nil {
+				log.Printf("⚠️ Ошибка оценки «%s»: %v", result.job.Title, result.err)
+				continue
+			}
+			job := result.job
+			evaluation := result.evaluation
+			if detailed, ok := a.cachedJobDetails(job.URL); ok {
+				job = detailed
+			}
+			a.lastEvaluatedJobs = append(a.lastEvaluatedJobs, job)
+			logEvaluationResult(evaluation)
+			if evaluation.MatchScore < minimumScore {
+				log.Printf("⏭️ Решение: пропустить (оценка: %d/10 ниже порога %d/10)", evaluation.MatchScore, minimumScore)
+				continue
+			}
+			qualifiedCount++
+			status := "✅"
+			if !evaluation.IsRelevant {
+				status = "⏭️"
+			}
+			evaluations = append(evaluations, fmt.Sprintf("%s %s | %s | Оценка: %d/10 | %s",
+				status, job.Title, job.Company, evaluation.MatchScore, evaluation.Reason))
+		}
 	}
 	a.vacanciesAnalyzed = analyzedCount
 	if analyzedCount == 0 {
@@ -1108,6 +1127,29 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 		result += fmt.Sprintf("\nПодходящих вакансий найдено меньше цели: просмотрено до %d вакансий и страниц поиска.", analyzedCount)
 	}
 	return result, nil
+}
+
+type vacancyEvaluation struct {
+	job        types.Job
+	evaluation *JobEvaluationResult
+	err        error
+}
+
+func (a *AIOrchestrator) evaluateVacancyBatch(jobs []types.Job, firstIndex int) []vacancyEvaluation {
+	results := make([]vacancyEvaluation, len(jobs))
+	var workers sync.WaitGroup
+	for i, job := range jobs {
+		workers.Add(1)
+		go func(index int, candidate types.Job) {
+			defer workers.Done()
+			log.Printf("🔍 Анализ вакансии %d: %s | URL: %s", firstIndex+index, candidate.Title, candidate.URL)
+			log.Printf("🧠 Запрашиваю анализ у AI модели для «%s»", candidate.Title)
+			evaluation, err := a.evaluateTracked(candidate)
+			results[index] = vacancyEvaluation{job: candidate, evaluation: evaluation, err: err}
+		}(i, job)
+	}
+	workers.Wait()
+	return results
 }
 
 func extractJSONObject(response string) string {

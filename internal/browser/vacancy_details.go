@@ -53,7 +53,13 @@ func selectSearchResults(groups [][]types.Job, limit int) []types.Job {
 }
 
 func (a *AIOrchestrator) loadJobDetails(job types.Job) (types.Job, error) {
-	if cached, ok := a.jobDetails[job.URL]; ok {
+	a.detailLoadMu.Lock()
+	defer a.detailLoadMu.Unlock()
+	return a.loadJobDetailsLocked(job)
+}
+
+func (a *AIOrchestrator) loadJobDetailsLocked(job types.Job) (types.Job, error) {
+	if cached, ok := a.cachedJobDetails(job.URL); ok {
 		return cached, nil
 	}
 	page, err := a.context.NewPage()
@@ -68,7 +74,7 @@ func (a *AIOrchestrator) loadJobDetails(job types.Job) (types.Job, error) {
 			if captchaErr := a.waitForCaptcha(page); captchaErr != nil {
 				return job, captchaErr
 			}
-			return a.loadJobDetails(job)
+			return a.loadJobDetailsLocked(job)
 		}
 		return job, fmt.Errorf("загрузить описание вакансии: %w", err)
 	}
@@ -76,16 +82,29 @@ func (a *AIOrchestrator) loadJobDetails(job types.Job) (types.Job, error) {
 		return job, err
 	}
 	if page.IsClosed() {
-		return a.loadJobDetails(job)
+		return a.loadJobDetailsLocked(job)
 	}
 	detailed, err := readJobDetails(page, job)
 	if err == nil {
-		if a.jobDetails == nil {
-			a.jobDetails = map[string]types.Job{}
-		}
-		a.jobDetails[job.URL] = detailed
+		a.cacheJobDetails(job.URL, detailed)
 	}
 	return detailed, err
+}
+
+func (a *AIOrchestrator) cachedJobDetails(url string) (types.Job, bool) {
+	a.jobDetailsMu.RLock()
+	defer a.jobDetailsMu.RUnlock()
+	job, ok := a.jobDetails[url]
+	return job, ok
+}
+
+func (a *AIOrchestrator) cacheJobDetails(url string, job types.Job) {
+	a.jobDetailsMu.Lock()
+	defer a.jobDetailsMu.Unlock()
+	if a.jobDetails == nil {
+		a.jobDetails = map[string]types.Job{}
+	}
+	a.jobDetails[url] = job
 }
 
 func readJobDetails(page playwright.Page, job types.Job) (types.Job, error) {

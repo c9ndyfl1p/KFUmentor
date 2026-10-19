@@ -260,10 +260,10 @@ func (a *AIOrchestrator) drainManualQueue() error {
 				if errors.As(draftErr, &checkFailure) {
 					// Do not expose the unchecked generated claims as an approved draft.
 					// Build a short letter from the saved facts for the user's own review.
-					detailed := a.jobDetails[e.Job.URL]
+					detailed, _ := a.cachedJobDetails(e.Job.URL)
 					letter = buildCoverLetterFallback(detailed.Title, detailed.Company, detailed.Snippet, cleanProfileSkills(profile.Skills), cleanProfileText(profile.Summary))
 					letter, draftErr = cleanCoverLetter(letter)
-					warning = "Автопроверка письма не завершилась. Подготовлено короткое письмо по фактам профиля. Проверьте текст самостоятельно; кнопка «Отправить» разрешает один отклик несмотря на недостающие требования вакансии."
+					warning = "Письмо не прошло автоматическую проверку фактов. Подготовлен короткий запасной вариант только по сведениям профиля. Проверьте текст перед отправкой."
 				}
 			}
 			err = store.Update(func(st *workflow.State) error {
