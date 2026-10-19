@@ -158,3 +158,60 @@ func TestRepeatedEvaluationFailuresStopRun(t *testing.T) {
 		t.Fatal(summary, calls, err)
 	}
 }
+
+func TestTargetUsesSelectedScoreAndKeepsReviewManual(t *testing.T) {
+	for _, threshold := range []int{0, 6, 7} {
+		t.Run(fmt.Sprint(threshold), func(t *testing.T) {
+			calls := 0
+			summary, err := runApplicationTarget(2, []string{"analyst"}, applicationOperations{
+				search: func(_ string, page int) ([]types.Job, error) {
+					if page == 0 {
+						return []types.Job{targetJob(1), targetJob(2)}, nil
+					}
+					return nil, nil
+				},
+				evaluate: func(job types.Job) (*JobEvaluationResult, error) {
+					r := &JobEvaluationResult{MatchScore: 6, IsRelevant: true, Recommendation: "apply"}
+					if job.URL == targetJob(2).URL {
+						r.MatchScore = 9
+						r.Recommendation = "review"
+					}
+					return r, nil
+				},
+				submit: func(types.Job) (string, error) { calls++; return "confirmed", nil },
+			}, 10, threshold)
+			expected := 1
+			if threshold == 7 {
+				expected = 0
+			}
+			if err != nil || calls != expected || summary.Sent != expected {
+				t.Fatal(summary, calls, err)
+			}
+		})
+	}
+}
+
+func TestVacancyLimitCountsQualifiedInsteadOfScanned(t *testing.T) {
+	summary, err := runApplicationTarget(2, []string{"analyst"}, applicationOperations{
+		search: func(_ string, page int) ([]types.Job, error) {
+			if page == 0 {
+				return []types.Job{targetJob(1), targetJob(2)}, nil
+			}
+			if page == 1 {
+				return []types.Job{targetJob(3), targetJob(4), targetJob(5)}, nil
+			}
+			return nil, nil
+		},
+		evaluate: func(job types.Job) (*JobEvaluationResult, error) {
+			score := 3
+			if job.URL == targetJob(3).URL || job.URL == targetJob(4).URL {
+				score = 6
+			}
+			return &JobEvaluationResult{MatchScore: score, IsRelevant: true, Recommendation: "review"}, nil
+		},
+		submit: func(types.Job) (string, error) { t.Fatal("review must not submit"); return "", nil },
+	}, 2, 6)
+	if err != nil || summary.Scanned != 4 || summary.Qualified != 2 || summary.Sent != 0 || !strings.Contains(summary.Reason, "лимит подходящих") {
+		t.Fatal(summary, err)
+	}
+}

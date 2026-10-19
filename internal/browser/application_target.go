@@ -20,9 +20,9 @@ var errAlreadyApplied = errors.New("на эту вакансию уже отпр
 var errNoVacancies = errors.New("вакансий не найдено по данному запросу")
 
 type applicationSummary struct {
-	Target, Sent, Scanned, Evaluated, Skipped, Failures int
-	Reason                                              string
-	Results                                             []string
+	Target, Sent, Scanned, Evaluated, Skipped, Failures, Qualified int
+	Reason                                                         string
+	Results                                                        []string
 }
 
 func (s applicationSummary) String() string {
@@ -30,7 +30,7 @@ func (s applicationSummary) String() string {
 	if s.Sent < s.Target {
 		status = fmt.Sprintf("Недобор: %d. %s", s.Target-s.Sent, s.Reason)
 	}
-	return fmt.Sprintf("\n📨 ОТКЛИКИ: %d из %d\nПросмотрено уникальных вакансий: %d\nОценено: %d\nПропущено: %d\nОшибок: %d\n%s\n%s", s.Sent, s.Target, s.Scanned, s.Evaluated, s.Skipped, s.Failures, status, strings.Join(s.Results, "\n"))
+	return fmt.Sprintf("\n📨 ОТКЛИКИ: %d из %d\nПросмотрено уникальных вакансий: %d\nОценено: %d\nПрошли порог оценки: %d\nПропущено: %d\nОшибок: %d\n%s\n%s", s.Sent, s.Target, s.Scanned, s.Evaluated, s.Qualified, s.Skipped, s.Failures, status, strings.Join(s.Results, "\n"))
 }
 
 type applicationOperations struct {
@@ -42,7 +42,7 @@ type applicationOperations struct {
 
 // Count successful applications, rather than vacancies inspected or attempts.
 // New search pages replenish the pool when jobs do not fit the saved profile.
-func runApplicationTarget(target int, queries []string, ops applicationOperations, vacancyLimits ...int) (applicationSummary, error) {
+func runApplicationTarget(target int, queries []string, ops applicationOperations, limits ...int) (applicationSummary, error) {
 	summary := applicationSummary{Target: target}
 	if target < 1 || target > types.MaxApplicationTarget {
 		return summary, fmt.Errorf("количество откликов должно быть от 1 до %d", types.MaxApplicationTarget)
@@ -51,11 +51,33 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 		return summary, fmt.Errorf("нет поисковых запросов")
 	}
 	vacancyLimit := 0
-	if len(vacancyLimits) > 0 {
-		vacancyLimit = vacancyLimits[0]
+	if len(limits) > 0 {
+		vacancyLimit = limits[0]
 		if vacancyLimit < 1 || vacancyLimit > types.MaxVacancyLimit {
 			return summary, fmt.Errorf("лимит поиска вакансий должен быть от 1 до %d", types.MaxVacancyLimit)
 		}
+	}
+	minimumScore := types.DefaultMinimumScore
+	if len(limits) > 1 {
+		minimumScore = limits[1]
+	}
+	if minimumScore < 0 || minimumScore > types.MaxMatchScore {
+		return summary, fmt.Errorf("минимальная оценка должна быть от 0 до 10")
+	}
+	scanBudget := 1000
+	if vacancyLimit > 0 {
+		scanBudget = min(max(vacancyLimit*10, 100), 1000)
+	}
+	limitReached := func() bool {
+		if vacancyLimit > 0 && summary.Qualified >= vacancyLimit {
+			summary.Reason = fmt.Sprintf("Достигнут лимит подходящих вакансий: %d из %d прошли порог %d/10.", summary.Qualified, vacancyLimit, minimumScore)
+			return true
+		}
+		if summary.Scanned >= scanBudget {
+			summary.Reason = fmt.Sprintf("Достигнут предел проверки: %d вакансий. Измените запрос или настройки поиска.", scanBudget)
+			return true
+		}
+		return false
 	}
 	seen := map[string]bool{}
 	consecutiveEvaluationErrors := 0
@@ -96,8 +118,7 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 				if key == "" || seen[key] {
 					continue
 				}
-				if vacancyLimit > 0 && summary.Scanned >= vacancyLimit {
-					summary.Reason = fmt.Sprintf("Достигнут лимит поиска: проверено %d из %d вакансий.", summary.Scanned, vacancyLimit)
+				if limitReached() {
 					return summary, nil
 				}
 				seen[key] = true
@@ -115,22 +136,32 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 				}
 				consecutiveEvaluationErrors = 0
 				summary.Evaluated++
-				if evaluation == nil || !evaluation.IsRelevant || evaluation.MatchScore < 7 || evaluation.Recommendation != "apply" {
+				if evaluation != nil {
+					logEvaluationResult(evaluation)
+					if evaluation.MatchScore >= minimumScore {
+						summary.Qualified++
+					}
+				}
+				if evaluation == nil || !evaluation.IsRelevant || evaluation.MatchScore < minimumScore || evaluation.Recommendation != "apply" {
 					summary.Skipped++
 					continue
 				}
+				log.Printf("✅ Решение: откликнуться (оценка: %d/10)", evaluation.MatchScore)
 				result, err := ops.submit(job)
 				if errors.Is(err, errAlreadyApplied) {
 					summary.Skipped++
+					log.Println("⏭️ Уже откликались: повторный отклик не отправлен")
 					continue
 				}
 				if err != nil {
 					summary.Failures++
+					log.Printf("❌ Ошибка отклика: %v", err)
 					summary.Reason = "Отправка остановлена: результат последнего отклика не подтверждён. Проверьте «Мои отклики» на hh.ru перед повторным запуском."
 					summary.Results = append(summary.Results, fmt.Sprintf("❌ %s: %v", job.Title, err))
 					return summary, err
 				}
 				summary.Sent++
+				log.Printf("✅ Отклик отправлен! Результат: %s", result)
 				summary.Results = append(summary.Results, fmt.Sprintf("✅ %s: %s", job.Title, result))
 				if ops.progress != nil {
 					ops.progress(summary.Sent, target)
@@ -144,8 +175,7 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 			break
 		}
 	}
-	if vacancyLimit > 0 && summary.Scanned >= vacancyLimit {
-		summary.Reason = fmt.Sprintf("Достигнут лимит поиска: проверено %d из %d вакансий.", summary.Scanned, vacancyLimit)
+	if limitReached() {
 		return summary, nil
 	}
 	summary.Reason = "Подходящих вакансий в просмотренных результатах оказалось меньше цели. Проверено до 10 страниц на каждый поисковый запрос."
@@ -192,7 +222,7 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 		},
 		evaluate: func(job types.Job) (*JobEvaluationResult, error) {
 			evaluatedIndex++
-			log.Printf("🤔 Анализирую вакансию %d/%d: %s | URL: %s", evaluatedIndex, a.vacancyLimit, job.Title, job.URL)
+			log.Printf("🤔 Анализирую вакансию %d/%d: %s | URL: %s", evaluatedIndex, 0, job.Title, job.URL)
 			evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
 			if err != nil {
 				log.Printf("❌ Ошибка оценки: %v", err)
@@ -205,7 +235,12 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 		progress: func(sent, target int) {
 			log.Printf("📨 Отправлено откликов: %d из %d", sent, target)
 		},
-	}, a.vacancyLimit)
+	}, a.vacancyLimit, a.minimumScore)
 	log.Print(summary.String())
 	return summary.String(), err
+}
+
+func logEvaluationResult(e *JobEvaluationResult) {
+	reason := strings.Join(strings.Fields(e.Reason), " ")
+	log.Printf("✅ Оценка вакансии завершена: оценка: %d/10; рекомендация: %s; причина: %s", e.MatchScore, e.Recommendation, truncateRunes(reason, 240))
 }

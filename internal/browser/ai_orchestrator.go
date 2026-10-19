@@ -1002,8 +1002,8 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 			continue
 		}
 		analyzedCount++
-		cardIndex := qualifiedCount + 1
-		log.Printf("🔍 Анализ вакансии %d/%d: %s | URL: %s", cardIndex, target, job.Title, job.URL)
+		cardIndex := analyzedCount
+		log.Printf("🔍 Анализ вакансии %d/%d: %s | URL: %s", cardIndex, 0, job.Title, job.URL)
 		log.Println("🧠 Запрашиваю анализ у AI модели...")
 		evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
 		if err != nil {
@@ -1014,8 +1014,7 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 			job = detailed
 		}
 		a.lastEvaluatedJobs = append(a.lastEvaluatedJobs, job)
-		reason := strings.Join(strings.Fields(evaluation.Reason), " ")
-		log.Printf("✅ Оценка вакансии завершена: оценка: %d/10; рекомендация: %s; причина: %s", evaluation.MatchScore, evaluation.Recommendation, truncateRunes(reason, 240))
+		logEvaluationResult(evaluation)
 		if evaluation.MatchScore < minimumScore {
 			log.Printf("⏭️ Решение: пропустить (оценка: %d/10 ниже порога %d/10)", evaluation.MatchScore, minimumScore)
 			time.Sleep(time.Second)

@@ -479,12 +479,12 @@ function showActivityMessage(message = "", isError = false) {
 
 function renderVacancyCards(cards, running, minimumScore = 0) {
   vacancyCards.replaceChildren();
-  const matchingCards = cards.filter((item) => item.score >= minimumScore);
+  const matchingCards = cards.filter((item) => item.score >= minimumScore || ["running", "applying", "error", "stopped"].includes(item.status));
   if (!matchingCards.length) {
     const empty = document.createElement("p");
     empty.className = "activity-empty";
     if (running && minimumScore > 0) {
-      empty.textContent = `Проверяю вакансии. Покажу только совпадения от ${minimumScore}/10.`;
+      empty.textContent = `Проверяю вакансии. Покажу ход анализа и результаты от ${minimumScore}/10.`;
     } else if (running) {
       empty.textContent = "Ищу вакансии. Карточки появятся, когда агент начнёт их оценивать.";
     } else if (cards.length && minimumScore > 0) {
@@ -508,7 +508,7 @@ function renderVacancyCards(cards, running, minimumScore = 0) {
     position.textContent = `Вакансия ${item.index}${item.total ? ` из ${item.total}` : ""}`;
     const state = document.createElement("span");
     state.className = "vacancy-state";
-    state.textContent = ({ running: "В работе", applying: "Отклик", success: "Готово", skipped: "Пропущена", stopped: "Остановлено", error: "Ошибка" })[item.status] || "В работе";
+    state.textContent = ({ running: "В работе", applying: "Отклик", success: "Готово", skipped: "Пропущена", stopped: "Остановлено", error: "Ошибка", review: "Ручная проверка" })[item.status] || "В работе";
     heading.append(position, state);
 
     const title = document.createElement("h3");
@@ -854,6 +854,10 @@ async function refreshState() {
   stopButton.hidden = !state.running;
   stopButton.disabled = /останавливаю/i.test(state.status || "");
   stopButton.textContent = stopButton.disabled ? "Останавливаю…" : "Остановить";
+
+  const summary = $("#task-summary");
+  summary.textContent = state.summary || "";
+  summary.hidden = !state.summary;
 
   renderVacancyCards(state.cards || [], Boolean(state.running), Number(state.minimumScore || 0));
 

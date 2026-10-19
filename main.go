@@ -63,7 +63,7 @@ func main() {
 	flag.BoolVar(&autoApply, "auto-apply", false, "Auto apply to suitable jobs")
 	flag.IntVar(&applicationTarget, "application-target", types.DefaultApplicationTarget, "Desired successful applications (1–100)")
 	flag.IntVar(&vacancyLimit, "vacancy-limit", 0, "Maximum vacancies to inspect (1–100; defaults to config)")
-	flag.IntVar(&minimumScore, "min-score", types.DefaultMinimumScore, "Minimum match score to keep (1–10)")
+	flag.IntVar(&minimumScore, "min-score", types.DefaultMinimumScore, "Minimum match score to keep (0–10; 0 disables score filtering)")
 	flag.StringVar(&profileDir, "profile", filepath.Join(os.Getenv("HOME"), ".ai-job-agent", "profile"), "Browser profile directory")
 	flag.StringVar(&modelURL, "model-url", "http://127.0.0.1:8000/v1", "OpenAI-compatible model URL")
 	flag.StringVar(&modelName, "model", "deepseek-chat", "Model name")
@@ -98,7 +98,7 @@ func main() {
 			log.Fatalf("Лимит поиска вакансий должен быть от 1 до %d", types.MaxVacancyLimit)
 		}
 		cfg.MaxJobs = vacancyLimit
-		if minimumScore < 1 || minimumScore > types.MaxMatchScore {
+		if minimumScore < 0 || minimumScore > types.MaxMatchScore {
 			log.Fatalf("Минимальная оценка должна быть от 0 до %d", types.MaxMatchScore)
 		}
 		cfg.MinimumScore = minimumScore

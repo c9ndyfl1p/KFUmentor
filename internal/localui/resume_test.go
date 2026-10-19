@@ -180,6 +180,9 @@ func TestResumeBrowserPreview(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("count was not passed by UI")
 	}
+	if err := page.Locator("[data-app-section='profile']").Click(); err != nil {
+		t.Fatal(err)
+	}
 	if err := page.Locator("#open-resume").Click(); err != nil {
 		t.Fatal(err)
 	}

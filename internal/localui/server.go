@@ -68,6 +68,7 @@ type taskState struct {
 	Captcha      bool          `json:"captchaRequired"`
 	MinimumScore int           `json:"minimumScore"`
 	Cards        []vacancyCard `json:"cards"`
+	Summary      string        `json:"summary,omitempty"`
 	Output       string        `json:"output,omitempty"`
 	StartedAt    *time.Time    `json:"startedAt,omitempty"`
 }
@@ -360,6 +361,7 @@ func (s *server) handleSaveProfile(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleState(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	state := s.state
+	state.Cards = append([]vacancyCard(nil), s.state.Cards...)
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, state)
 }
@@ -367,6 +369,7 @@ func (s *server) handleState(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleClear(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.state.Cards = nil
+	s.state.Summary = ""
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Карточки очищены"})
 }
@@ -683,6 +686,14 @@ func (s *server) updateFromLog(line string) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if strings.HasPrefix(message, "📨 ОТКЛИКИ:") {
+		s.state.Summary = message
+		return
+	}
+	if strings.HasPrefix(message, "Недобор:") {
+		s.state.Summary += " · " + message
+		return
+	}
 	if strings.Contains(message, "CAPTCHA_REQUIRED:") {
 		s.state.Captcha = true
 		s.state.Status = "Пройдите капчу в окне браузера"
@@ -723,7 +734,8 @@ func (s *server) updateFromLog(line string) {
 			card.Status = "skipped"
 			card.Result = "Рекомендация: пропустить"
 		default:
-			card.Status = "success"
+			card.Status = "review"
+			card.Stage = "Нужна ручная проверка"
 			card.Result = "Нужна ручная проверка"
 		}
 	} else if strings.Contains(message, "Запрашиваю анализ у AI модели") {
@@ -739,6 +751,8 @@ func (s *server) updateFromLog(line string) {
 		card.Stage, card.Status = "Вакансия пропущена", "skipped"
 		card.Score = scoreFromLog(message)
 		card.Result = "Не подходит по заданным критериям"
+	} else if strings.Contains(message, "Уже откликались:") {
+		card.Stage, card.Status, card.Result = "Отклик уже существует", "skipped", "Повторный отклик не отправлен"
 	} else if strings.Contains(message, "Начинаю отклик на вакансию:") {
 		card.Stage, card.Status = "Открываю форму отклика", "applying"
 	} else if strings.Contains(message, "Сопроводительное письмо:") {
@@ -779,8 +793,8 @@ func scoreFromLog(message string) int {
 
 func truncateForCard(value string) string {
 	value = strings.TrimSpace(value)
-	if len(value) > 360 {
-		return value[:357] + "..."
+	if len([]rune(value)) > 360 {
+		return string([]rune(value)[:357]) + "..."
 	}
 	return value
 }

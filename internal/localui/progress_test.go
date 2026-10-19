@@ -28,3 +28,18 @@ func TestAutoApplyProgressSplitOutput(t *testing.T) {
 		t.Fatal("lost error diagnostics")
 	}
 }
+
+func TestReviewIsNotLostAtTaskCompletion(t *testing.T) {
+	s := &server{}
+	s.appendOutput("Анализирую вакансию 1/0: Аналитик | URL: https://hh.ru/vacancy/123\n")
+	s.appendOutput("Оценка вакансии завершена: оценка: 6/10; рекомендация: review; причина: Уточнить опыт\n")
+	s.appendOutput("📨 ОТКЛИКИ: 0 из 2\nНедобор: 2. Достигнут лимит подходящих вакансий.\n")
+	s.setFinished("Поиск завершён", "")
+	c := s.state.Cards[0]
+	if c.Score != 6 || c.Status == "error" || c.Result != "Нужна ручная проверка" {
+		t.Fatal(c)
+	}
+	if !strings.Contains(s.state.Summary, "0 из 2") || !strings.Contains(s.state.Summary, "Недобор: 2") {
+		t.Fatal(s.state.Summary)
+	}
+}
