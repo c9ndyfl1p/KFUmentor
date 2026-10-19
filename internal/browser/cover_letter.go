@@ -88,7 +88,7 @@ func (a *AIOrchestrator) generateCoverLetter(title, company string, job types.Jo
 		}
 		review, err := a.reviewCoverLetter(profile, letter)
 		if err != nil {
-			return "", err
+			return "", &letterCheckFailure{Err: err}
 		}
 		if review.Supported != nil && *review.Supported && len(review.UnsupportedClaims) == 0 {
 			return letter, nil
@@ -124,7 +124,15 @@ type letterReview struct {
 	UnsupportedClaims []string `json:"unsupported_claims"`
 }
 
+// Only a failed review can fall back to a factual draft for explicit human review.
+// Generation, profile and vacancy errors keep their ordinary blocking behavior.
+type letterCheckFailure struct{ Err error }
+
+func (e *letterCheckFailure) Error() string { return e.Err.Error() }
+func (e *letterCheckFailure) Unwrap() error { return e.Err }
+
 func (a *AIOrchestrator) reviewCoverLetter(profile types.Resume, letter string) (letterReview, error) {
+	profile.ContactInfo = types.Contact{}
 	data, err := json.Marshal(struct {
 		Resume types.Resume `json:"resume"`
 		Letter string       `json:"letter"`
@@ -132,13 +140,38 @@ func (a *AIOrchestrator) reviewCoverLetter(profile types.Resume, letter string) 
 	if err != nil {
 		return letterReview{}, err
 	}
-	response, err := a.llmClient.GenerateJSON(string(data), prompt.LetterReviewSystem)
-	if err != nil {
-		return letterReview{}, fmt.Errorf("проверка фактов письма: %w", err)
+	system := prompt.LetterReviewSystem
+	var formatErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		response, err := a.llmClient.GenerateJSONWithBudget(string(data), system, 512, 60*time.Second)
+		if err != nil {
+			return letterReview{}, fmt.Errorf("проверка фактов письма: %w", err)
+		}
+		review, parseErr := parseLetterReview(response)
+		if parseErr == nil {
+			return review, nil
+		}
+		formatErr = parseErr
+		system = prompt.LetterReviewSystem + "\nПредыдущий ответ не прошёл проверку формата. Верни ровно JSON с supported (boolean) и unsupported_claims (массив строк). Не меняй правила проверки фактов."
 	}
+	return letterReview{}, fmt.Errorf("проверка фактов письма не выполнена после двух попыток: %w; подготовьте письмо заново", formatErr)
+}
+
+func parseLetterReview(response string) (letterReview, error) {
 	var review letterReview
-	if err := json.Unmarshal([]byte(response), &review); err != nil || review.Supported == nil {
-		return letterReview{}, fmt.Errorf("модель не вернула результат проверки фактов письма")
+	if err := json.Unmarshal([]byte(extractJSONObject(response)), &review); err != nil {
+		return review, fmt.Errorf("модель вернула некорректный JSON")
+	}
+	if review.Supported == nil || review.UnsupportedClaims == nil {
+		return review, fmt.Errorf("отсутствуют supported или unsupported_claims")
+	}
+	for _, claim := range review.UnsupportedClaims {
+		if strings.TrimSpace(claim) == "" {
+			return review, fmt.Errorf("модель указала пустое неподтверждённое утверждение")
+		}
+	}
+	if *review.Supported != (len(review.UnsupportedClaims) == 0) {
+		return review, fmt.Errorf("противоречивый результат проверки фактов")
 	}
 	return review, nil
 }

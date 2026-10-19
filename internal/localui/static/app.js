@@ -733,7 +733,7 @@ function showActivityMessage(message = "", isError = false) {
 
 function renderVacancyCards(cards, running, minimumScore = 0) {
   vacancyCards.replaceChildren();
-  const matchingCards = cards.filter((item) => item.score >= minimumScore || ["running", "applying", "error", "stopped"].includes(item.status));
+  const matchingCards = cards.filter((item) => item.canDraft || item.canSend || item.canRetry || item.score >= minimumScore || ["running", "applying", "error", "stopped", "queued", "ready", "recommended", "success", "warning"].includes(item.status));
   if (!matchingCards.length) {
     const empty = document.createElement("p");
     empty.className = "activity-empty";
@@ -762,7 +762,7 @@ function renderVacancyCards(cards, running, minimumScore = 0) {
     position.textContent = `Вакансия ${item.index}${item.total ? ` из ${item.total}` : ""}`;
     const state = document.createElement("span");
     state.className = "vacancy-state";
-    state.textContent = ({ running: "В работе", applying: "Отклик", success: "Готово", skipped: "Пропущена", stopped: "Остановлено", error: "Ошибка", review: "Ручная проверка" })[item.status] || "В работе";
+    state.textContent = ({ running: "В работе", applying: "Отклик", success: "Готово", skipped: "Пропущена", stopped: "Остановлено", error: "Ошибка", review: "Ручная проверка", queued: "В очереди", ready: "Письмо готово", recommended: "Рекомендована", warning: "Требует внимания" })[item.status] || "В работе";
     heading.append(position, state);
 
     const title = document.createElement("h3");
@@ -809,7 +809,8 @@ function renderVacancyCards(cards, running, minimumScore = 0) {
       details.setAttribute("role", "alert");
       card.append(details);
     }
-    vacancyCards.append(card);
+    if(window.renderManualActions) window.renderManualActions(item,card);
+ vacancyCards.append(card);
   }
 }
 
@@ -1070,6 +1071,7 @@ profileForm.addEventListener("input", () => {
 $("#auto-apply").addEventListener("change", (event) => {
   applyNote.hidden = !event.target.checked;
   $("#application-target").disabled = !event.target.checked;
+
   $("#application-target-hint").textContent = event.target.checked ? "От 1 до 100. Агент остановится после нужного числа успешных откликов. Если подходящих вакансий меньше, покажет недобор." : "Включите «Отправлять отклики», чтобы задать количество. Поиск без отправки остаётся доступным.";
 });
 
@@ -1091,6 +1093,7 @@ taskForm.addEventListener("submit", async (event) => {
         task: $("#task").value,
         areaId: Number(areaIDField.value || 0),
         autoApply: $("#auto-apply").checked,
+ applyByScore: !$("#application-policy").checked,
         applicationTarget: $("#auto-apply").checked ? Number($("#application-target").value) : 0,
         vacancyLimit: Number($("#vacancy-limit").value),
         minimumScore: Number($("#minimum-score").value),

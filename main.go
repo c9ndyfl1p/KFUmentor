@@ -47,6 +47,7 @@ func main() {
 	var applicationTarget int
 	var vacancyLimit int
 	var minimumScore int
+	var applyByScore bool
 	var profileDir string
 	var modelURL string
 	var modelName string
@@ -60,6 +61,7 @@ func main() {
 	flag.StringVar(&task, "task", "", "Task for the agent")
 	flag.BoolVar(&headless, "headless", true, "Run browser in headless mode")
 	flag.BoolVar(&debug, "debug", false, "Enable debug mode")
+	flag.BoolVar(&applyByScore, "apply-by-score", false, "Allow any valid evaluation at or above the score threshold, including review and skip")
 	flag.BoolVar(&autoApply, "auto-apply", false, "Auto apply to suitable jobs")
 	flag.IntVar(&applicationTarget, "application-target", types.DefaultApplicationTarget, "Desired successful applications (1–100)")
 	flag.IntVar(&vacancyLimit, "vacancy-limit", 0, "Maximum vacancies to inspect (1–100; defaults to config)")
@@ -102,6 +104,7 @@ func main() {
 			log.Fatalf("Минимальная оценка должна быть от 0 до %d", types.MaxMatchScore)
 		}
 		cfg.MinimumScore = minimumScore
+		cfg.ApplyByScore = applyByScore
 		if profileDir != "" {
 			cfg.ProfileDir = profileDir
 		}
@@ -136,6 +139,9 @@ func main() {
 		return
 	}
 
+	if os.Getenv("KFUMENTOR_QUEUE_ONLY") == "1" {
+		task = "Ручная обработка вакансий"
+	}
 	if task == "" {
 		if len(flag.Args()) > 0 {
 			task = flag.Args()[0]

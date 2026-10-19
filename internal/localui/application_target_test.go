@@ -33,3 +33,17 @@ func TestApplicationTargetValidationAndProcessArgument(t *testing.T) {
 		}
 	}
 }
+
+func TestScorePolicyIsPassedToWorker(t *testing.T) {
+	s := &server{}
+	for _, enabled := range []bool{true, false} {
+		args := strings.Join(s.taskArguments(taskInput{ApplyByScore: enabled}), " ")
+		expected := "--apply-by-score=false"
+		if enabled {
+			expected = "--apply-by-score=true"
+		}
+		if !strings.Contains(args, expected) {
+			t.Fatal(args)
+		}
+	}
+}

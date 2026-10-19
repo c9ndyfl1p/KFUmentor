@@ -127,6 +127,9 @@ func OpenLogin(cfg Config) error {
 }
 
 func RunTask(task string, cfg Config) error {
+	if os.Getenv("KFUMENTOR_QUEUE_ONLY") == "1" {
+		cfg.UseAI = true
+	}
 	if cfg.AutoApply && !cfg.UseAI {
 		return fmt.Errorf("для отправки заданного количества откликов включите UseAI в конфигурации")
 	}
@@ -176,12 +179,12 @@ func RunTask(task string, cfg Config) error {
 	}
 
 	if cfg.ProfileDir != "" {
-		loggedIn, err := verifyAndHandleLogin(page, cfg.Headless, cfg.ProfileDir, cfg.AutoApply)
+		loggedIn, err := verifyAndHandleLogin(page, cfg.Headless, cfg.ProfileDir, cfg.AutoApply || os.Getenv("KFUMENTOR_QUEUE_ONLY") == "1")
 		if err != nil {
 			return err
 		}
 
-		if !loggedIn && cfg.AutoApply {
+		if !loggedIn && (cfg.AutoApply || os.Getenv("KFUMENTOR_QUEUE_ONLY") == "1") {
 			return fmt.Errorf("для автооткликов требуется войти в аккаунт. Используйте --headless=false для интерактивного входа")
 		}
 	}
@@ -203,7 +206,11 @@ func RunTask(task string, cfg Config) error {
 		orchestrator.applicationTarget = cfg.ApplicationTarget
 		orchestrator.vacancyLimit = cfg.MaxJobs
 		orchestrator.minimumScore = cfg.MinimumScore
+		orchestrator.applyByScore = cfg.ApplyByScore
 
+		if os.Getenv("KFUMENTOR_QUEUE_ONLY") == "1" {
+			return orchestrator.drainManualQueue()
+		}
 		result, err := orchestrator.ExecuteTask(task, cfg.AutoApply)
 		if err != nil {
 			if cfg.Debug {
@@ -980,8 +987,8 @@ func normalizeVacancyURL(url string) string {
 }
 
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if len([]rune(s)) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string([]rune(s)[:maxLen]) + "..."
 }

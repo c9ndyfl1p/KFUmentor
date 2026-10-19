@@ -47,6 +47,7 @@ func (s *server) taskArguments(input taskInput) []string {
 		"--task=" + input.Task,
 		"--headless=" + fmt.Sprint(!input.Visible),
 		"--auto-apply=" + fmt.Sprint(input.AutoApply),
+		"--apply-by-score=" + fmt.Sprint(input.ApplyByScore),
 		"--application-target=" + fmt.Sprint(applicationTarget),
 		"--vacancy-limit=" + fmt.Sprint(vacancyLimit),
 		"--min-score=" + fmt.Sprint(minimumScore),

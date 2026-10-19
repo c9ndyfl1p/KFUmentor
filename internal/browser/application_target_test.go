@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -181,9 +182,7 @@ func TestTargetUsesSelectedScoreAndKeepsReviewManual(t *testing.T) {
 				submit: func(types.Job) (string, error) { calls++; return "confirmed", nil },
 			}, 10, threshold)
 			expected := 1
-			if threshold == 7 {
-				expected = 0
-			}
+
 			if err != nil || calls != expected || summary.Sent != expected {
 				t.Fatal(summary, calls, err)
 			}
@@ -213,5 +212,67 @@ func TestVacancyLimitCountsQualifiedInsteadOfScanned(t *testing.T) {
 	}, 2, 6)
 	if err != nil || summary.Scanned != 4 || summary.Qualified != 2 || summary.Sent != 0 || !strings.Contains(summary.Reason, "лимит подходящих") {
 		t.Fatal(summary, err)
+	}
+}
+
+func TestScorePolicyDecision(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		score             int
+		rec               string
+		relevant, checked bool
+		blockers          []string
+		mode, want        bool
+	}{
+		{"review at threshold", 6, "review", false, true, nil, true, true},
+		{"review higher", 7, "review", true, true, nil, true, true},
+		{"below threshold", 5, "apply", true, true, nil, true, false},
+		{"strict review", 7, "review", true, true, nil, false, false},
+		{"strict apply below threshold", 3, "apply", true, false, nil, false, true},
+		{"score overrides recommendation", 9, "review", true, true, []string{"Требуется офис, кандидат выбрал только удалёнку"}, true, true},
+		{"score needs no blocker field", 9, "review", true, false, nil, true, true},
+		{"score overrides skip", 9, "skip", true, true, nil, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := &JobEvaluationResult{MatchScore: tc.score, Recommendation: tc.rec, IsRelevant: tc.relevant, BlockersChecked: tc.checked, HardBlockers: tc.blockers}
+			got, reason := applicationAllowed(e, 6, tc.mode)
+			if got != tc.want || reason == "" {
+				t.Fatal(got, reason)
+			}
+		})
+	}
+}
+
+func TestScorePolicyWorkerSendsReviewExactlyOnce(t *testing.T) {
+	calls := 0
+	summary, err := runApplicationTarget(1, []string{"аналитик"}, applicationOperations{
+		applyByScore: true,
+		search:       func(string, int) ([]types.Job, error) { return []types.Job{targetJob(1), targetJob(2)}, nil },
+		evaluate: func(types.Job) (*JobEvaluationResult, error) {
+			return &JobEvaluationResult{MatchScore: 6, Recommendation: "review", BlockersChecked: true}, nil
+		},
+		submit: func(types.Job) (string, error) { calls++; return "confirmed", nil },
+	}, 10, 6)
+	if err != nil || calls != 1 || summary.Sent != 1 {
+		t.Fatal(summary, calls, err)
+	}
+}
+
+func TestBlockerJSONIsStrict(t *testing.T) {
+	for _, bad := range []string{
+		`{"blockers_checked":true}`, `{"blockers_checked":true,"hard_blockers":null}`,
+		`{"blockers_checked":"true","hard_blockers":[]}`, `{"blockers_checked":true,"hard_blockers":"none"}`,
+	} {
+		var e JobEvaluationResult
+		if json.Unmarshal([]byte(bad), &e) == nil {
+			t.Fatal("accepted invalid blocker data", bad)
+		}
+	}
+	var e JobEvaluationResult
+	if err := json.Unmarshal([]byte(`{"is_relevant":true,"match_score":6,"recommendation":"review","blockers_checked":true,"hard_blockers":[]}`), &e); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := applicationAllowed(&e, 6, true); !ok {
+		t.Fatal(e)
 	}
 }

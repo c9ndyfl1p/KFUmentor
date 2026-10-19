@@ -2,6 +2,7 @@ package browser
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -19,28 +20,32 @@ import (
 )
 
 type AIOrchestrator struct {
-	applicationTarget  int
-	vacancyLimit       int
-	minimumScore       int
-	searchGroups       [][]types.Job
-	searchTerms        []string
-	vacanciesAnalyzed  int
-	letterExamplesPath string
-	jobDetails         map[string]types.Job
-	llmClient          *llm.OllamaClient
-	page               playwright.Page
-	context            playwright.BrowserContext
-	pw                 *playwright.Playwright
-	profileDir         string
-	headless           bool
-	onContextChanged   func(playwright.BrowserContext)
-	debug              bool
-	currentTask        string
-	actionHistory      []map[string]interface{}
-	resume             types.Resume
-	autoApply          bool
-	areaID             int
-	lastEvaluatedJobs  []types.Job
+	resumePath             string
+	approvedLetter         string
+	approvedLetterVerified bool
+	applicationTarget      int
+	vacancyLimit           int
+	minimumScore           int
+	applyByScore           bool
+	searchGroups           [][]types.Job
+	searchTerms            []string
+	vacanciesAnalyzed      int
+	letterExamplesPath     string
+	jobDetails             map[string]types.Job
+	llmClient              *llm.OllamaClient
+	page                   playwright.Page
+	context                playwright.BrowserContext
+	pw                     *playwright.Playwright
+	profileDir             string
+	headless               bool
+	onContextChanged       func(playwright.BrowserContext)
+	debug                  bool
+	currentTask            string
+	actionHistory          []map[string]interface{}
+	resume                 types.Resume
+	autoApply              bool
+	areaID                 int
+	lastEvaluatedJobs      []types.Job
 }
 
 type AIAction struct {
@@ -51,13 +56,16 @@ type AIAction struct {
 }
 
 type JobEvaluationResult struct {
-	IsRelevant     bool     `json:"is_relevant"`
-	Reason         string   `json:"reason"`
-	MatchScore     int      `json:"match_score"`
-	Recommendation string   `json:"recommendation"`
-	Analysis       string   `json:"analysis"`
-	SkillsMatch    []string `json:"skills_match"`
-	Requirements   []string `json:"requirements"`
+	ReviewPoints    []string `json:"review_points"`
+	BlockersChecked bool     `json:"blockers_checked"`
+	HardBlockers    []string `json:"hard_blockers"`
+	IsRelevant      bool     `json:"is_relevant"`
+	Reason          string   `json:"reason"`
+	MatchScore      int      `json:"match_score"`
+	Recommendation  string   `json:"recommendation"`
+	Analysis        string   `json:"analysis"`
+	SkillsMatch     []string `json:"skills_match"`
+	Requirements    []string `json:"requirements"`
 }
 
 // Small local models sometimes return a string, an object, or a list of
@@ -75,7 +83,11 @@ func (r *JobEvaluationResult) UnmarshalJSON(data []byte) error {
 		return strings.TrimSpace(value)
 	}
 	var relevant bool
-	_ = json.Unmarshal(fields["is_relevant"], &relevant)
+	if raw, ok := fields["is_relevant"]; !ok || string(raw) == "null" {
+		return fmt.Errorf("отсутствует is_relevant")
+	} else if err := json.Unmarshal(raw, &relevant); err != nil {
+		return fmt.Errorf("is_relevant должен быть boolean")
+	}
 	var score int
 	if err := json.Unmarshal(fields["match_score"], &score); err != nil {
 		var value string
@@ -113,6 +125,26 @@ func (r *JobEvaluationResult) UnmarshalJSON(data []byte) error {
 			}
 		}
 		return items
+	}
+	r.BlockersChecked = false
+	r.HardBlockers = nil
+	if raw, ok := fields["blockers_checked"]; ok {
+		if err := json.Unmarshal(raw, &r.BlockersChecked); err != nil {
+			return fmt.Errorf("blockers_checked must be boolean")
+		}
+	}
+	if r.BlockersChecked {
+		raw, ok := fields["hard_blockers"]
+		if !ok || string(raw) == "null" {
+			return fmt.Errorf("hard_blockers must be an array")
+		}
+		if err := json.Unmarshal(raw, &r.HardBlockers); err != nil {
+			return fmt.Errorf("hard_blockers must be a string array")
+		}
+	}
+	r.ReviewPoints = readList("review_points")
+	if len(r.ReviewPoints) > 3 {
+		r.ReviewPoints = r.ReviewPoints[:3]
 	}
 	r.IsRelevant = relevant
 	r.Reason = readString("reason")
@@ -155,6 +187,7 @@ func CreateLLMOrchestrator(modelURL, modelName, resumePath string, page playwrig
 		debug:              debug,
 		actionHistory:      []map[string]interface{}{},
 		resume:             resume,
+		resumePath:         resumePath,
 		letterExamplesPath: filepath.Join(filepath.Dir(resumePath), "cover-letter-examples.local.json"),
 		jobDetails:         map[string]types.Job{},
 		minimumScore:       types.DefaultMinimumScore,
@@ -180,6 +213,9 @@ func (a *AIOrchestrator) ExecuteTask(task string, autoApply bool) (string, error
 	log.Printf("📋 AI создал план из %d шагов", len(plan))
 
 	result, err := a.executePlan(plan)
+	if err == nil {
+		err = a.drainManualQueue()
+	}
 	if err != nil {
 		return "", fmt.Errorf("plan execution failed: %w", err)
 	}
@@ -362,7 +398,7 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 		}
 
 		log.Println("🧠 Запрашиваю анализ у AI модели...")
-		evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
+		evaluation, err := a.evaluateTracked(job)
 		if err != nil {
 			log.Printf("❌ Ошибка анализа: %v", err)
 			results = append(results, fmt.Sprintf("❌ %s: ошибка анализа", job.Title))
@@ -423,7 +459,14 @@ func (a *AIOrchestrator) applyToRelevantJobs() (string, error) {
 	return finalResult, nil
 }
 
-func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
+func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, returnedErr error) {
+	submissionStarted, bareConfirmed := false, false
+	defer func() {
+		if returnedErr != nil && !errors.Is(returnedErr, errAlreadyApplied) {
+			returnedErr = &ApplicationFailure{Err: returnedErr, Sent: bareConfirmed, Uncertain: submissionStarted}
+		}
+	}()
+
 	log.Printf("📝 Начинаю отклик на вакансию: %s", job.Title)
 
 	page, err := a.context.NewPage()
@@ -471,7 +514,19 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 	}
 	a.jobDetails[job.URL] = detailed
 	title, company := detailed.Title, detailed.Company
-	coverLetter, err := a.generateCoverLetter(title, company, detailed)
+	coverLetter := a.approvedLetter
+	if coverLetter == "" {
+		coverLetter, err = a.generateCoverLetter(title, company, detailed)
+	} else {
+		coverLetter, err = cleanCoverLetter(coverLetter)
+		if err == nil && !a.approvedLetterVerified {
+			review, reviewErr := a.reviewCoverLetter(a.resume, coverLetter)
+			err = reviewErr
+			if err == nil && (review.Supported == nil || !*review.Supported || len(review.UnsupportedClaims) > 0) {
+				err = fmt.Errorf("письмо содержит неподтверждённые утверждения: %s; подготовьте его заново", strings.Join(review.UnsupportedClaims, "; "))
+			}
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("письмо не подготовлено, отклик отменён: %w", err)
 	}
@@ -498,6 +553,7 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 	}
 
 	log.Println("🖱️ Нажимаю кнопку 'Откликнуться'...")
+	submissionStarted = true
 	if err := applyBtn.Click(); err != nil {
 		return "", fmt.Errorf("не удалось нажать кнопку отклика: %w", err)
 	}
@@ -550,6 +606,8 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (string, error) {
 		}, 8*time.Second); err != nil {
 			return "", fmt.Errorf("hh.ru не подтвердил отклик без письма; проверьте «Мои отклики» перед повтором: %w", err)
 		}
+
+		bareConfirmed = true
 
 		// Prefer the direct chat action shown after an application. Some HH
 		// response dialogs do not show it, so fall back to the matching card in
@@ -839,6 +897,10 @@ func (a *AIOrchestrator) printJobAnalysis(job types.Job, evaluation *JobEvaluati
 }
 
 func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask string) (*JobEvaluationResult, error) {
+	if !hasEvaluationFacts(a.resume) {
+		return &JobEvaluationResult{MatchScore: 1, Recommendation: "review", Reason: "В профиле нет сведений о навыках, опыте, проектах или образовании; оценить соответствие нельзя.", Analysis: "Заполните профиль. Отсутствие сведений не доказывает отсутствие квалификации.", SkillsMatch: []string{}, Requirements: []string{}, ReviewPoints: []string{"Навыки и опыт не указаны.", "Какие навыки, проекты или образование относятся к выбранной роли?"}}, nil
+	}
+
 	detailed, err := a.loadJobDetails(job)
 	if err != nil {
 		return nil, err
@@ -847,21 +909,7 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 
 	profile := a.resume
 	profile.ContactInfo = types.Contact{}
-	profile.Summary = truncateRunes(profile.Summary, 900)
-	if len(profile.Skills) > 30 {
-		profile.Skills = profile.Skills[:30]
-	}
-	if len(profile.Experience) > 5 {
-		profile.Experience = profile.Experience[:5]
-	}
-	if len(profile.Projects) > 5 {
-		profile.Projects = profile.Projects[:5]
-	}
-	if len(profile.Achievements) > 5 {
-		profile.Achievements = profile.Achievements[:5]
-	}
-	job.Snippet = truncateRunes(job.Snippet, 3000)
-	userTask = truncateRunes(userTask, 500)
+
 	data, err := json.Marshal(struct {
 		Task    string       `json:"task"`
 		Resume  types.Resume `json:"resume"`
@@ -870,21 +918,39 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 	if err != nil {
 		return nil, err
 	}
-	response, err := a.llmClient.GenerateJSONWithBudget(string(data), agentprompt.EvaluationSystem, 320, 90*time.Second)
+	limit := 64000
+	if !strings.HasSuffix(strings.TrimRight(a.llmClient.BaseURL, "/"), "/v1") {
+		limit = 14000
+	}
+	if len([]rune(string(data))) > limit {
+		return nil, fmt.Errorf("профиль и вакансия слишком длинные для выбранной модели; сократите данные или используйте модель с большим контекстом. Оценка не выполнялась, данные не обрезались")
+	}
+	system := agentprompt.EvaluationSystem + reviewPointRules
+	response, err := a.llmClient.GenerateJSONWithBudget(string(data), system, 768, 90*time.Second)
 
 	if err != nil {
 		return nil, fmt.Errorf("ошибка генерации анализа: %w", err)
 	}
 
 	var result JobEvaluationResult
-	if err := json.Unmarshal([]byte(extractJSONObject(response)), &result); err != nil {
+	parseErr := json.Unmarshal([]byte(extractJSONObject(response)), &result)
+	if parseErr == nil {
+		parseErr = validateEvaluation(&result)
+	}
+
+	if err := parseErr; err != nil {
 		const retrySystem = `Верни ровно один JSON-объект без Markdown и пояснений. Строго соблюдай типы: is_relevant boolean, reason string, match_score integer 1..10, recommendation string (apply/skip/review), analysis string, skills_match string[], requirements string[]. Не выдумывай факты; если данных мало, recommendation=review.`
-		retry, retryErr := a.llmClient.GenerateJSONWithBudget(string(data), retrySystem, 180, 45*time.Second)
+		retryPrompt := system + "\nИсправь формат ответа, сохраняя все правила оценки выше.\n" + retrySystem
+		retry, retryErr := a.llmClient.GenerateJSONWithBudget(string(data), retryPrompt, 768, 45*time.Second)
 		if retryErr != nil {
 			return nil, fmt.Errorf("модель вернула некорректный JSON (%v); повторный запрос не удался: %w", err, retryErr)
 		}
 		response = retry
-		if retryParseErr := json.Unmarshal([]byte(extractJSONObject(response)), &result); retryParseErr != nil {
+		retryParseErr := json.Unmarshal([]byte(extractJSONObject(response)), &result)
+		if retryParseErr == nil {
+			retryParseErr = validateEvaluation(&result)
+		}
+		if retryParseErr != nil {
 			return nil, fmt.Errorf("ошибка парсинга JSON после повтора: %w; ответ: %s", retryParseErr, truncateRunes(response, 240))
 		}
 	}
@@ -895,18 +961,9 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 	if result.Recommendation != "apply" && result.Recommendation != "skip" && result.Recommendation != "review" {
 		return nil, fmt.Errorf("некорректная рекомендация модели")
 	}
-	minimumScore := a.minimumScore
-	if minimumScore < 0 || minimumScore > types.MaxMatchScore {
-		minimumScore = types.DefaultMinimumScore
-	}
-	if result.MatchScore < minimumScore {
-		result.IsRelevant = false
-		result.Recommendation = "skip"
-		thresholdReason := fmt.Sprintf("Оценка %d/10 ниже установленного порога %d/10.", result.MatchScore, minimumScore)
-		if result.Reason != "" {
-			result.Reason += " "
-		}
-		result.Reason += thresholdReason
+
+	if result.Recommendation == "review" && len(result.ReviewPoints) == 0 {
+		result.ReviewPoints = []string{result.Reason, "Модель не сформулировала конкретный вопрос. Проверьте требования вакансии перед отправкой."}
 	}
 	return &result, nil
 }
@@ -990,6 +1047,9 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 	analyzedCount := 0
 	nextCandidate := 0
 	for qualifiedCount < target && analyzedCount < scanBudget {
+		if err := a.drainManualQueue(); err != nil {
+			return "", err
+		}
 		if nextCandidate >= len(candidates) && !loadNextPage() {
 			break
 		}
@@ -1005,7 +1065,7 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 		cardIndex := analyzedCount
 		log.Printf("🔍 Анализ вакансии %d/%d: %s | URL: %s", cardIndex, 0, job.Title, job.URL)
 		log.Println("🧠 Запрашиваю анализ у AI модели...")
-		evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
+		evaluation, err := a.evaluateTracked(job)
 		if err != nil {
 			log.Printf("⚠️ Ошибка оценки: %v", err)
 			continue
@@ -1650,4 +1710,18 @@ func firstSentences(value string, limit int) string {
 		}
 	}
 	return strings.Join(result, " ")
+}
+
+func validateEvaluation(e *JobEvaluationResult) error {
+	if e.MatchScore < 1 || e.MatchScore > 10 {
+		return fmt.Errorf("некорректная оценка модели")
+	}
+	if e.Recommendation != "apply" && e.Recommendation != "skip" && e.Recommendation != "review" {
+		return fmt.Errorf("некорректная рекомендация модели")
+	}
+	return nil
+}
+
+func hasEvaluationFacts(profile types.Resume) bool {
+	return strings.TrimSpace(profile.Summary) != "" || len(profile.Skills) > 0 || len(profile.Experience) > 0 || len(profile.Projects) > 0 || len(profile.Achievements) > 0 || len(profile.Education) > 0 || len(profile.Languages) > 0
 }

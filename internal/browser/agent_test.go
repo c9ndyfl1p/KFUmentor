@@ -165,6 +165,9 @@ func TestEvaluationUsesSummaryAndRejectsInvalidScore(t *testing.T) {
 			if !strings.Contains(request.Prompt, "Учебный NLP-проект") {
 				t.Error("evaluation omitted resume summary")
 			}
+			if !strings.Contains(request.System, prompt.EvaluationSystem) {
+				t.Error("evaluation or JSON retry omitted scoring rules")
+			}
 			json.NewEncoder(w).Encode(llm.GenerateResponse{Response: fmt.Sprintf(`{"is_relevant":true,"match_score":%d,"recommendation":"review"}`, score)})
 		})
 		job := types.Job{Title: "ML Engineer", URL: "https://hh.ru/vacancy/1", Snippet: "Python"}
@@ -262,4 +265,97 @@ func TestLocalModelSmoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("draft with synthetic profile: %s", letter)
+}
+
+func TestEvaluationDoesNotDiscardLateRequirementsOrSkills(t *testing.T) {
+	tail := "Обязателен коммерческий стаж не менее 5 лет, учебные проекты стаж не заменяют."
+	a := mockAgent(t, func(w http.ResponseWriter, r *http.Request) {
+		var request llm.GenerateRequest
+		json.NewDecoder(r.Body).Decode(&request)
+		if !strings.Contains(request.Prompt, tail) {
+			t.Error("mandatory requirement at end was discarded")
+		}
+		if !strings.Contains(request.Prompt, "Шестая релевантная работа") {
+			t.Error("experience after first five was discarded")
+		}
+		if !strings.Contains(request.Prompt, "Power BI") {
+			t.Error("skill after first 30 was discarded")
+		}
+		if strings.Contains(request.Prompt, "private@example.test") {
+			t.Error("contact details sent to evaluation model")
+		}
+		json.NewEncoder(w).Encode(llm.GenerateResponse{Response: `{"is_relevant":true,"match_score":3,"recommendation":"skip"}`})
+	})
+	a.resume = types.Resume{Summary: "Коммерческого стажа нет", ContactInfo: types.Contact{Email: "private@example.test"}}
+	for i := 0; i < 35; i++ {
+		a.resume.Skills = append(a.resume.Skills, fmt.Sprintf("Skill %d", i))
+	}
+	a.resume.Skills = append(a.resume.Skills, "Power BI")
+	for i := 0; i < 5; i++ {
+		a.resume.Experience = append(a.resume.Experience, types.Experience{Position: "Другая работа"})
+	}
+	a.resume.Experience = append(a.resume.Experience, types.Experience{Position: "Шестая релевантная работа"})
+	job := types.Job{Title: "Analyst", URL: "https://hh.ru/vacancy/1", Snippet: strings.Repeat("Описание продукта. ", 210) + tail}
+	a.jobDetails[job.URL] = job
+	if _, err := a.evaluateJobForTaskWithAnalysis(job, "аналитик"); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestEvaluationRejectsOversizeInsteadOfSilentlyTruncating(t *testing.T) {
+	a := mockAgent(t, func(w http.ResponseWriter, r *http.Request) { t.Fatal("oversize request was sent") })
+	a.resume.Skills = []string{"SQL"}
+	job := types.Job{Title: "Analyst", URL: "https://hh.ru/vacancy/1", Snippet: strings.Repeat("x", 65000)}
+	a.jobDetails[job.URL] = job
+	if _, err := a.evaluateJobForTaskWithAnalysis(job, "аналитик"); err == nil || !strings.Contains(err.Error(), "данные не обрезались") {
+		t.Fatal(err)
+	}
+}
+
+func TestEmptyProfileIsUnknownNotRejectedAndDoesNotCallModel(t *testing.T) {
+	a := mockAgent(t, func(w http.ResponseWriter, r *http.Request) { t.Fatal("empty profile must not call model") })
+	a.resume = types.Resume{Name: "Кандидат", Title: "Аналитик"}
+	e, err := a.evaluateJobForTaskWithAnalysis(types.Job{}, "аналитик")
+	if err != nil || e.Recommendation != "review" || e.MatchScore != 1 || len(e.ReviewPoints) < 2 {
+		t.Fatal(e, err)
+	}
+}
+
+func TestLetterReviewRetriesInvalidSchemaAndKeepsRules(t *testing.T) {
+	calls := 0
+	a := mockAgent(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var req llm.GenerateRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		if !strings.Contains(req.System, prompt.LetterReviewSystem) {
+			t.Error("review rules lost during retry")
+		}
+		if strings.Contains(req.Prompt, "private@example.com") {
+			t.Error("contacts sent to reviewer")
+		}
+		answer := `{"match_score":7}`
+		if calls == 2 {
+			answer = "```json\n{\"supported\":true,\"unsupported_claims\":[]}\n```"
+		}
+		json.NewEncoder(w).Encode(llm.GenerateResponse{Response: answer})
+	})
+	review, err := a.reviewCoverLetter(types.Resume{Skills: []string{"SQL"}, ContactInfo: types.Contact{Email: "private@example.com"}}, "Среди моих навыков SQL.")
+	if err != nil || review.Supported == nil || !*review.Supported || calls != 2 {
+		t.Fatal(review, err, calls)
+	}
+}
+
+func TestLetterReviewBlocksInvalidAndContradictoryResponses(t *testing.T) {
+	for _, body := range []string{`{}`, `{"supported":true}`, `{"supported":true,"unsupported_claims":["выдуманный стаж"]}`, `{"supported":false,"unsupported_claims":[]}`, `{"supported":"true","unsupported_claims":[]}`} {
+		calls := 0
+		a := mockAgent(t, func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			json.NewEncoder(w).Encode(llm.GenerateResponse{Response: body})
+		})
+		if _, err := a.reviewCoverLetter(types.Resume{}, "письмо"); err == nil || calls != 2 {
+			t.Fatal(body, err, calls)
+		}
+	}
+	if review, err := parseLetterReview(`{"supported":false,"unsupported_claims":["пять лет стажа"]}`); err != nil || review.Supported == nil || *review.Supported {
+		t.Fatal(review, err)
+	}
 }

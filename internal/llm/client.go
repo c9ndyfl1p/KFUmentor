@@ -240,7 +240,7 @@ func (c *OllamaClient) openAIChatWithMaxTokens(messages []ChatMessage, jsonOnly 
 	if c.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
-	response, err := c.HTTPClient.Do(req)
+	response, err := c.doModelRequest(req)
 	if err != nil {
 		return "", fmt.Errorf("HTTP request: %w", err)
 	}

@@ -7,7 +7,8 @@
   <title>matchmentor · Карьерный поиск с ментором</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
- <script src="/static/resume.js" defer></script>
+ <script src="/static/manual.js" defer></script>
+<script src="/static/resume.js" defer></script>
 </head>
 <body>
   <dialog id="captcha-dialog" class="captcha-dialog" aria-labelledby="captcha-title" aria-describedby="captcha-description">
@@ -116,7 +117,12 @@
                       <label class="toggle-row"><span class="toggle-copy"><strong>Показывать браузер</strong><small>Для входа на hh.ru и ручного контроля</small></span><input type="checkbox" id="visible-browser"><span class="switch" aria-hidden="true"></span></label>
                       <label class="toggle-row apply-toggle"><span class="toggle-copy"><strong>Отправлять отклики</strong><small>Только при соответствии выше порога</small></span><input type="checkbox" id="auto-apply"><span class="switch" aria-hidden="true"></span></label>
                     </div>
-                    <div class="limits-grid">
+                    <div class="application-policy-control">
+ <span class="field-label">Правило автоотклика</span>
+ <label class="policy-toggle"><span>По оценке</span><input id="application-policy" type="checkbox" role="switch" aria-label="По рекомендации модели" aria-describedby="application-policy-description" checked><span class="policy-track" aria-hidden="true"></span><span>По рекомендации модели</span></label>
+ <small id="application-policy-description" class="city-hint"></small>
+ </div>
+ <div class="limits-grid">
                       <div class="limit-field"><label class="field-label" for="vacancy-limit">Лимит вакансий</label><input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint"><small id="vacancy-limit-hint" class="city-hint">Подтверждённых по оценке вакансий</small></div>
                       <div class="limit-field"><label class="field-label" for="application-target">Цель по откликам</label><input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint"><small id="application-target-hint" class="city-hint">Доступно при включённых откликах</small></div>
                       <div class="limit-field"><label class="field-label" for="minimum-score">Минимальная оценка соответствия</label><input id="minimum-score" name="minimumScore" type="number" min="0" max="10" step="1" value="7" required aria-describedby="minimum-score-hint"><small id="minimum-score-hint" class="city-hint">Ниже порога вакансия пропускается</small></div>
@@ -389,5 +395,12 @@
       </div>
     </form>
   </dialog>
+<dialog id="application-dialog" class="resume-dialog" aria-labelledby="application-title">
+ <div class="resume-dialog-content"><button id="application-close" class="dialog-close" type="button" aria-label="Закрыть">×</button>
+ <h2 id="application-title">Сопроводительное письмо</h2>
+ <p id="application-stage" role="status"></p><pre id="application-letter" class="application-letter"></pre>
+ <p>Нажатие «Отправить» разрешает один отклик от вашего аккаунта hh.ru с этим письмом. При изменении профиля письмо нужно подготовить заново.</p>
+ <button id="application-send" class="button button-primary" type="button" disabled>Отправить</button></div>
+ </dialog>
 </body>
 </html>

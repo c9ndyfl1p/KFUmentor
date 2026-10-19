@@ -27,6 +27,7 @@ type Config struct {
 	ModelName         string
 	AreaID            int
 	MaxJobs           int
+	ApplyByScore      bool
 	MinimumScore      int
 	ApplicationTarget int
 	ResumePath        string

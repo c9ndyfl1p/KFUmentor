@@ -22,6 +22,7 @@ import (
 
 	"github.com/mihnpro/Ai_agent_2/internal/llm"
 	"github.com/mihnpro/Ai_agent_2/internal/types"
+	"github.com/mihnpro/Ai_agent_2/internal/workflow"
 )
 
 //go:embed static/*
@@ -42,6 +43,7 @@ type taskInput struct {
 	ApplicationTarget int    `json:"applicationTarget"`
 	VacancyLimit      int    `json:"vacancyLimit"`
 	MinimumScore      int    `json:"minimumScore"`
+	ApplyByScore      bool   `json:"applyByScore"`
 	Visible           bool   `json:"visible"`
 }
 
@@ -74,19 +76,30 @@ type taskState struct {
 }
 
 type vacancyCard struct {
-	Index   int    `json:"index"`
-	Total   int    `json:"total"`
-	Title   string `json:"title"`
-	URL     string `json:"url,omitempty"`
-	Stage   string `json:"stage"`
-	Status  string `json:"status"`
-	Score   int    `json:"score,omitempty"`
-	Result  string `json:"result,omitempty"`
-	Summary string `json:"summary,omitempty"`
-	Details string `json:"details,omitempty"`
+	ID           string   `json:"id,omitempty"`
+	CanDraft     bool     `json:"canDraft,omitempty"`
+	CanSend      bool     `json:"canSend,omitempty"`
+	CanRetry     bool     `json:"canRetry,omitempty"`
+	Letter       string   `json:"letter,omitempty"`
+	Version      string   `json:"version,omitempty"`
+	Submission   string   `json:"submission,omitempty"`
+	ReviewPoints []string `json:"reviewPoints,omitempty"`
+	Index        int      `json:"index"`
+	Total        int      `json:"total"`
+	Title        string   `json:"title"`
+	URL          string   `json:"url,omitempty"`
+	Stage        string   `json:"stage"`
+	Status       string   `json:"status"`
+	Score        int      `json:"score,omitempty"`
+	Result       string   `json:"result,omitempty"`
+	Summary      string   `json:"summary,omitempty"`
+	Details      string   `json:"details,omitempty"`
 }
 
 type server struct {
+	history         *workflow.Store
+	runID           string
+	dispatchMu      sync.Mutex
 	cfg             types.Config
 	mu              sync.Mutex
 	state           taskState
@@ -111,6 +124,9 @@ func Start(cfg types.Config, address string) error {
 	}
 
 	app := &server{cfg: cfg, state: taskState{Status: "Готов к поиску"}}
+	if err := app.initWorkflow(); err != nil {
+		return err
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", app.handleIndex)
 	static, _ := fs.Sub(staticFiles, "static")
@@ -131,6 +147,7 @@ func Start(cfg types.Config, address string) error {
 	mux.HandleFunc("POST /api/mentor/exercise/review", app.handleMentorExerciseReview)
 	mux.HandleFunc("POST /api/mentor/interview", app.handleMentorInterview)
 	mux.HandleFunc("GET /api/state", app.handleState)
+	mux.HandleFunc("POST /api/vacancy/action", app.handleVacancyAction)
 	mux.HandleFunc("GET /api/deepseek/status", app.handleDeepSeekStatus)
 	mux.HandleFunc("POST /api/run", app.handleRun)
 	mux.HandleFunc("POST /api/login", app.handleLogin)
@@ -204,6 +221,16 @@ func (s *server) localOnly(next http.Handler) http.Handler {
 				http.Error(w, "local access only", http.StatusForbidden)
 				return
 			}
+		}
+		if r.Method != "GET" && r.Method != "HEAD" {
+			origin := r.Header.Get("Origin")
+			if (origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+				http.Error(w, "same-origin actions only", http.StatusForbidden)
+				return
+			}
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Cache-Control", "no-store")
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -363,10 +390,44 @@ func (s *server) handleState(w http.ResponseWriter, r *http.Request) {
 	state := s.state
 	state.Cards = append([]vacancyCard(nil), s.state.Cards...)
 	s.mu.Unlock()
+	if s.history != nil {
+		st, err := s.history.Read()
+		if err != nil {
+			writeError(w, 500, "Не удалось прочитать историю")
+			return
+		}
+		state.Cards = workflowCards(st)
+		s.mu.Lock()
+		runID := s.runID
+		s.mu.Unlock()
+		if run := st.Runs[runID]; run != nil {
+			if run.Target > 0 {
+				state.Summary = fmt.Sprintf("📨 ОТКЛИКИ: %d из %d (ручные и автоматические)", run.Sent, run.Target)
+			} else if run.Sent > 0 {
+				state.Summary = fmt.Sprintf("📨 Отправлено вручную: %d", run.Sent)
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, state)
 }
 
 func (s *server) handleClear(w http.ResponseWriter, r *http.Request) {
+	if s.history != nil {
+		if err := s.history.Update(func(st *workflow.State) error {
+			for _, e := range st.Entries {
+				switch e.Status {
+				case "queued_draft", "queued_send", "queued_retry", "drafting", "applying", "evaluating":
+					continue
+				}
+				e.Hidden = true
+			}
+			return nil
+		}); err != nil {
+			writeError(w, 500, err.Error())
+			return
+		}
+	}
+
 	s.mu.Lock()
 	s.state.Cards = nil
 	s.state.Summary = ""
@@ -442,7 +503,26 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	s.state.MinimumScore = input.MinimumScore
+	s.runID = workflow.NewID()
+	runID := s.runID
 	s.mu.Unlock()
+	if s.history != nil {
+		err := s.history.Update(func(st *workflow.State) error {
+			target := 0
+			if input.AutoApply {
+				target = input.ApplicationTarget
+			}
+			st.Runs[runID] = &workflow.Run{Target: target}
+			st.ActiveRun = runID
+			st.LastRun = runID
+			return nil
+		})
+		if err != nil {
+			s.setFinished("Не удалось сохранить задачу", err.Error())
+			writeError(w, 500, err.Error())
+			return
+		}
+	}
 
 	args := s.taskArguments(input)
 
@@ -558,12 +638,22 @@ func (s *server) beginTask(status string) bool {
 	return true
 }
 
-func (s *server) launchCommand(args []string, successStatus string) error {
+func (s *server) launchCommand(args []string, successStatus string, queueOnly ...bool) error {
 	executable, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(executable, args...)
+	manual := len(queueOnly) > 0 && queueOnly[0]
+	if s.history != nil {
+		s.mu.Lock()
+		runID := s.runID
+		s.mu.Unlock()
+		cmd.Env = append(os.Environ(), "KFUMENTOR_WORKFLOW_PATH="+s.history.Path, "KFUMENTOR_RUN_ID="+runID, "KFUMENTOR_QUEUE_ONLY=0")
+		if manual {
+			cmd.Env = append(cmd.Env, "KFUMENTOR_QUEUE_ONLY=1")
+		}
+	}
 	output := &outputWriter{server: s}
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -576,12 +666,14 @@ func (s *server) launchCommand(args []string, successStatus string) error {
 	go func() {
 		err := cmd.Wait()
 		output.Flush()
+		s.finishWorkflow()
 		s.mu.Lock()
 		cancelled := s.cancelRequested
 		s.activeCmd = nil
 		s.cancelRequested = false
 		s.mu.Unlock()
 		if cancelled {
+			s.failQueuedActions("Задача остановлена; действие нужно подтвердить заново")
 			s.setFinished("Задача остановлена", "")
 			return
 		}
@@ -595,10 +687,15 @@ func (s *server) launchCommand(args []string, successStatus string) error {
 					detail = strings.TrimSpace(line)
 				}
 			}
+			if manual {
+				s.failQueuedActions(detail)
+			}
 			s.setFinished("Задача завершилась с ошибкой", detail)
+			s.kickManualWorker()
 			return
 		}
 		s.setFinished(successStatus, "")
+		s.kickManualWorker()
 	}()
 	return nil
 }
@@ -751,6 +848,13 @@ func (s *server) updateFromLog(line string) {
 		card.Stage, card.Status = "Вакансия пропущена", "skipped"
 		card.Score = scoreFromLog(message)
 		card.Result = "Не подходит по заданным критериям"
+	} else if strings.Contains(message, "Отклик пропущен:") {
+		card.Status = "skipped"
+		if strings.Contains(message, "review требует") {
+			card.Status = "review"
+		}
+		card.Stage = "Автоотклик не разрешён"
+		card.Result = truncateForCard(message)
 	} else if strings.Contains(message, "Уже откликались:") {
 		card.Stage, card.Status, card.Result = "Отклик уже существует", "skipped", "Повторный отклик не отправлен"
 	} else if strings.Contains(message, "Начинаю отклик на вакансию:") {

@@ -1,6 +1,7 @@
 package localui
 
 import (
+	"encoding/json"
 	playwright "github.com/mxschmitt/playwright-go"
 	"net/http"
 	"net/http/httptest"
@@ -14,12 +15,36 @@ func TestProgressBrowser(t *testing.T) {
 		t.Skip("opt-in local browser test")
 	}
 	s := &server{state: taskState{MinimumScore: 6, Status: "Поиск завершён", Summary: "📨 ОТКЛИКИ: 0 из 2", Cards: []vacancyCard{
-		{Index: 1, Title: "Ручная проверка", Score: 6, Status: "review", Result: "Нужна ручная проверка"},
+		{ID: "123", CanDraft: true, ReviewPoints: []string{"Не подтверждён опыт", "Готовы к работе в офисе?"}, Index: 1, Title: "Ручная проверка", Score: 6, Status: "review", Result: "Нужна ручная проверка"},
 		{Index: 2, Title: "Низкая оценка", Score: 3, Status: "skipped"},
 		{Index: 3, Title: "Ошибка модели", Status: "error", Details: "Нет ответа"},
 		{Index: 4, Title: "В работе", Status: "running"},
 	}}}
+	actions := make(chan string, 4)
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/vacancy/action", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ ID, Action, Version string }
+		json.NewDecoder(r.Body).Decode(&body)
+		actions <- body.Action
+		s.mu.Lock()
+		c := &s.state.Cards[0]
+		if body.Action == "draft" {
+			c.Letter = "Тестовое письмо, не отправляемое работодателям."
+			c.Version = "test-v1"
+			c.CanSend = true
+			c.Status = "ready"
+		}
+		if body.Action == "send" {
+			if body.Version != "test-v1" {
+				t.Error("wrong preview version", body.Version)
+			}
+			c.CanSend = false
+			c.CanDraft = false
+			c.Status = "queued"
+		}
+		s.mu.Unlock()
+		writeJSON(w, 202, map[string]string{"status": "test only"})
+	})
 	mux.HandleFunc("GET /api/state", s.handleState)
 	mux.HandleFunc("GET /api/mentor/plan", s.handleGetMentorPlan)
 	mux.HandleFunc("GET /api/profile", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{}) })
@@ -85,6 +110,70 @@ func TestProgressBrowser(t *testing.T) {
 	}
 	if text, err := page.Locator("#task-summary").InnerText(); err != nil || !strings.Contains(text, "0 из 2") {
 		t.Fatal(text, err)
+	}
+	if checked, err := page.Locator("#application-policy").IsChecked(); err != nil || !checked {
+		t.Fatal("strict mode must be initial default", err)
+	}
+	if err := page.Locator("#application-policy").Uncheck(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if checked, err := page.Locator("#application-policy").IsChecked(); err != nil || checked {
+		t.Fatal("policy did not persist", err)
+	}
+	if err := page.Locator("#vacancy-cards button:has-text('Откликнуться')").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if action := <-actions; action != "draft" {
+		t.Fatal("preview sent an application", action)
+	}
+	if err := page.Locator("#application-letter").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction("() => !document.querySelector('#application-send').disabled", nil); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := page.Locator("#application-letter").InnerText(); err != nil || !strings.Contains(text, "Тестовое письмо") {
+		t.Fatal(text, err)
+	}
+	// Reproduce an old failed letter still present while its replacement is queued.
+	s.mu.Lock()
+	s.state.Cards[0].Status = "queued"
+	s.state.Cards[0].Stage = "Письмо в очереди"
+	s.state.Cards[0].Details = "Старая ошибка проверки"
+	s.state.Cards[0].CanSend = false
+	s.mu.Unlock()
+	if _, err := page.Evaluate("() => refreshState()"); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := page.Locator("#application-letter").InnerText(); err != nil || !strings.Contains(text, "Готовится новая версия") || strings.Contains(text, "Тестовое письмо") {
+		t.Fatal(text, err)
+	}
+	if text, err := page.Locator("#application-stage").InnerText(); err != nil || text != "Письмо в очереди" {
+		t.Fatal(text, err)
+	}
+	if disabled, err := page.Locator("#application-send").IsDisabled(); err != nil || !disabled {
+		t.Fatal("queued draft was sendable", err)
+	}
+	s.mu.Lock()
+	s.state.Cards[0].Status = "ready"
+	s.state.Cards[0].Details = ""
+	s.state.Cards[0].Stage = "Проверьте письмо"
+	s.state.Cards[0].CanSend = true
+	s.mu.Unlock()
+	if _, err := page.Evaluate("() => refreshState()"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#application-send").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if action := <-actions; action != "send" {
+		t.Fatal(action)
+	}
+	if err := page.Locator("#application-close").Click(); err != nil {
+		t.Fatal(err)
 	}
 	if err := page.Locator("[data-app-section='mentor']").Click(); err != nil {
 		t.Fatal(err)

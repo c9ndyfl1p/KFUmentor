@@ -7,3 +7,9 @@ scripts/.deepseek-bridge-path.local
 
 # Personal examples of cover letters
 data/cover-letter-examples.local.json
+
+# Persistent local application history and locks
+data/application-history.local.json*
+data/.applications-*.tmp
+
+data/model-rate.local.json*

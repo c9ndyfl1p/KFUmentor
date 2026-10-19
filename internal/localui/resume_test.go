@@ -177,7 +177,7 @@ func TestResumeBrowserPreview(t *testing.T) {
 	}
 	select {
 	case task := <-tasks:
-		if task.ApplicationTarget != 7 || !task.AutoApply {
+		if task.ApplicationTarget != 7 || !task.AutoApply || task.ApplyByScore {
 			t.Fatal(task)
 		}
 	case <-time.After(5 * time.Second):

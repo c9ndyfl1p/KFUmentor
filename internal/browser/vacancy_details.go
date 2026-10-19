@@ -99,7 +99,10 @@ func readJobDetails(page playwright.Page, job types.Job) (types.Job, error) {
 	if err != nil || strings.TrimSpace(text) == "" {
 		return job, fmt.Errorf("описание вакансии пустое")
 	}
-	job.Snippet = truncateRunes(text, 10000)
+	if len([]rune(text)) > 40000 {
+		return job, fmt.Errorf("описание вакансии превышает 40 000 символов; нужна ручная проверка без усечения требований")
+	}
+	job.Snippet = text
 	if title, err := page.Locator("h1").First().InnerText(); err == nil && strings.TrimSpace(title) != "" {
 		job.Title = strings.TrimSpace(title)
 	}

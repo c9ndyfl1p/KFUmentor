@@ -34,10 +34,13 @@ func (s applicationSummary) String() string {
 }
 
 type applicationOperations struct {
-	search   func(string, int) ([]types.Job, error)
-	evaluate func(types.Job) (*JobEvaluationResult, error)
-	submit   func(types.Job) (string, error)
-	progress func(int, int)
+	checkpoint   func() error
+	totalSent    func() int
+	search       func(string, int) ([]types.Job, error)
+	evaluate     func(types.Job) (*JobEvaluationResult, error)
+	submit       func(types.Job) (string, error)
+	progress     func(int, int)
+	applyByScore bool
 }
 
 // Count successful applications, rather than vacancies inspected or attempts.
@@ -114,6 +117,17 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 			}
 			pageSignatures[index][signature] = true
 			for _, job := range jobs {
+				if ops.checkpoint != nil {
+					if err := ops.checkpoint(); err != nil {
+						return summary, err
+					}
+				}
+				if ops.totalSent != nil {
+					summary.Sent = ops.totalSent()
+					if summary.Sent >= target {
+						return summary, nil
+					}
+				}
 				key := applicationJobKey(job.URL)
 				if key == "" || seen[key] {
 					continue
@@ -142,11 +156,13 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 						summary.Qualified++
 					}
 				}
-				if evaluation == nil || !evaluation.IsRelevant || evaluation.MatchScore < minimumScore || evaluation.Recommendation != "apply" {
+				allowed, decisionReason := applicationAllowed(evaluation, minimumScore, ops.applyByScore)
+				if !allowed {
+					log.Printf("ℹ️ Отклик пропущен: %s", decisionReason)
 					summary.Skipped++
 					continue
 				}
-				log.Printf("✅ Решение: откликнуться (оценка: %d/10)", evaluation.MatchScore)
+				log.Printf("✅ Решение: откликнуться (оценка: %d/10); %s", evaluation.MatchScore, decisionReason)
 				result, err := ops.submit(job)
 				if errors.Is(err, errAlreadyApplied) {
 					summary.Skipped++
@@ -209,6 +225,9 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 	log.Printf("🎯 Желаемое количество откликов: %d", target)
 	evaluatedIndex := 0
 	summary, err := runApplicationTarget(target, queries, applicationOperations{
+		applyByScore: a.applyByScore,
+		checkpoint:   a.drainManualQueue,
+		totalSent:    a.workflowTotalCounter(),
 		search: func(query string, page int) ([]types.Job, error) {
 			log.Printf("🔍 Ищу вакансии: %s, страница %d", query, page+1)
 			if _, err := a.searchJobsPage(query, page); err != nil {
@@ -223,7 +242,7 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 		evaluate: func(job types.Job) (*JobEvaluationResult, error) {
 			evaluatedIndex++
 			log.Printf("🤔 Анализирую вакансию %d/%d: %s | URL: %s", evaluatedIndex, 0, job.Title, job.URL)
-			evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
+			evaluation, err := a.evaluateTracked(job)
 			if err != nil {
 				log.Printf("❌ Ошибка оценки: %v", err)
 			} else {
@@ -231,7 +250,7 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 			}
 			return evaluation, err
 		},
-		submit: a.performJobApplication,
+		submit: a.submitTracked,
 		progress: func(sent, target int) {
 			log.Printf("📨 Отправлено откликов: %d из %d", sent, target)
 		},
@@ -244,3 +263,26 @@ func logEvaluationResult(e *JobEvaluationResult) {
 	reason := strings.Join(strings.Fields(e.Reason), " ")
 	log.Printf("✅ Оценка вакансии завершена: оценка: %d/10; рекомендация: %s; причина: %s", e.MatchScore, e.Recommendation, truncateRunes(reason, 240))
 }
+
+func applicationAllowed(e *JobEvaluationResult, minimumScore int, byScore bool) (bool, string) {
+	if e == nil {
+		return false, "нет оценки вакансии"
+	}
+	if e.MatchScore < 1 || e.MatchScore > 10 || (byScore && e.MatchScore < minimumScore) {
+		return false, "оценка ниже выбранного порога или некорректна"
+	}
+	if e.Recommendation != "apply" && e.Recommendation != "review" && e.Recommendation != "skip" {
+		return false, "некорректная рекомендация"
+	}
+	if byScore {
+		return true, "режим «По оценке»: балл проходит выбранный порог"
+	}
+	if e.Recommendation != "apply" {
+		return false, "review требует ручной проверки; автоматическая отправка только для apply"
+	}
+
+	return true, "получена рекомендация модели apply"
+}
+
+const reviewPointRules = `
+Дополнительно верни review_points: массив из 2–3 коротких строк для review: что не подтверждено в профиле, конкретное противоречие (если есть), и один вопрос кандидату. Не выдумывай недостатки. Если спорных моментов нет, выбирай apply; при явном несоответствии выбирай skip. Не копируй recommendation из примера. Желательные навыки не являются обязательными. Для стажировок учитывай учебные проекты, если коммерческий опыт не требуется. Отсутствие сведений не доказывает отсутствие навыка. Для apply/skip допускается пустой review_points. reason и analysis — максимум по одному короткому предложению. Ответ только JSON.`
