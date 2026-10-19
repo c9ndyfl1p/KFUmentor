@@ -284,6 +284,7 @@ function renderMentorState(state) {
 }
 
 function renderMentorAssessment(assessment) {
+  if (overviewPlan) overviewPlan.assessment = assessment;
   const target = $("#mentor-assessment-result");
   target.replaceChildren();
   target.hidden = !assessment;
@@ -293,7 +294,6 @@ function renderMentorAssessment(assessment) {
     return;
   }
   if (assessment.vacancy) $("#mentor-vacancy").value = assessment.vacancy;
-  if (assessment.clarifications) $("#mentor-clarifications").value = assessment.clarifications;
   const top = document.createElement("div");
   top.className = "mentor-assessment-score";
   const score = document.createElement("strong");
@@ -322,13 +322,79 @@ function renderMentorAssessment(assessment) {
   }
   const questions = assessment.questions || [];
   $("#mentor-questions-wrap").hidden = !questions.length;
-  renderList($("#mentor-questions"), questions, "mentor-question-list");
+  renderQuestionFields($("#mentor-questions"), questions, assessment.clarificationAnswers || [], "assessment", 1500, "Поделитесь примером из опыта или уточните факт из профиля");
+  renderQuestionAnswerHistory($("#mentor-clarification-history"), assessment.clarificationAnswers || []);
   $("#mentor-assess").textContent = questions.length ? "Уточнить оценку" : "Оценить навыки";
   const tailorActions = $("#mentor-tailor-actions");
   tailorActions.hidden = !$("#mentor-vacancy").value.trim();
   const tailoredWrap = $("#mentor-tailored-wrap");
   tailoredWrap.hidden = !assessment.tailored;
   if (assessment.tailored) $("#mentor-tailored-draft").value = formatTailoredResume(assessment.tailored);
+}
+
+function renderQuestionFields(container, questions, answers, prefix, maxLength, placeholder) {
+  container.replaceChildren();
+  const answerByQuestion = new Map((answers || []).map((item) => [item.question, item.answer]));
+  questions.forEach((text, index) => {
+    const card = document.createElement("article");
+    card.className = "mentor-question-card";
+    const number = document.createElement("span");
+    number.className = "mentor-question-number";
+    number.textContent = `ВОПРОС ${index + 1}`;
+    const question = document.createElement("p");
+    question.className = "mentor-question-text";
+    question.textContent = text;
+    const label = document.createElement("label");
+    const id = `${prefix}-answer-${index}`;
+    label.className = "field-label";
+    label.htmlFor = id;
+    label.textContent = "Ваш ответ";
+    const textarea = document.createElement("textarea");
+    textarea.id = id;
+    textarea.dataset.question = text;
+    textarea.maxLength = maxLength;
+    textarea.rows = 3;
+    textarea.required = true;
+    textarea.placeholder = placeholder;
+    textarea.value = answerByQuestion.get(text) || "";
+    card.append(number, question, label, textarea);
+    container.append(card);
+  });
+}
+
+function renderQuestionAnswerHistory(container, answers) {
+  container.replaceChildren();
+  if (!answers?.length) return;
+  const heading = document.createElement("h4");
+  heading.textContent = "Ваши предыдущие ответы";
+  const list = document.createElement("div");
+  list.className = "mentor-question-history-list";
+  for (const item of answers) {
+    const card = document.createElement("article");
+    card.className = "mentor-question-history-item";
+    const question = document.createElement("strong");
+    question.textContent = item.question;
+    const answerLabel = document.createElement("span");
+    answerLabel.className = "mentor-question-answer-label";
+    answerLabel.textContent = "ВАШ ОТВЕТ";
+    const answer = document.createElement("p");
+    answer.textContent = item.answer;
+    card.append(question, answerLabel, answer);
+    list.append(card);
+  }
+  container.append(heading, list);
+}
+
+function collectQuestionAnswers(container) {
+  return [...container.querySelectorAll("textarea[data-question]")]
+    .map((textarea) => ({ question: textarea.dataset.question, answer: textarea.value.trim() }))
+    .filter((item) => item.question && item.answer);
+}
+
+function mergeQuestionAnswers(previous, current, limit = 8) {
+  const merged = new Map((previous || []).map((item) => [item.question, item]));
+  for (const item of current || []) merged.set(item.question, item);
+  return [...merged.values()].slice(-limit);
 }
 
 function formatTailoredResume(draft) {
@@ -354,7 +420,9 @@ function renderMentorExercise(exercise) {
   $("#mentor-exercise-title").textContent = exercise.title || "Учебное задание";
   $("#mentor-exercise-prompt").textContent = exercise.prompt || "";
   renderList($("#mentor-exercise-criteria"), exercise.criteria || []);
-  $("#mentor-answer").value = exercise.answer || "";
+  const questions = exercise.questions?.length ? exercise.questions : [exercise.prompt || "Опишите решение задания"];
+  const answers = exercise.questionAnswers?.length ? exercise.questionAnswers : (exercise.answer ? [{ question: questions[0], answer: exercise.answer }] : []);
+  renderQuestionFields($("#mentor-exercise-questions"), questions, answers, "exercise", 2500, "Запишите ход решения именно этого пункта");
   const review = $("#mentor-review");
   review.replaceChildren();
   review.hidden = !exercise.review;
@@ -390,11 +458,31 @@ function renderMentorInterview(interview) {
     label.className = "mentor-label";
     label.textContent = `ВОПРОС ${interview.turns.length + 1}`;
     const question = document.createElement("p");
+    question.className = "mentor-question-text";
     question.textContent = interview.currentQuestion;
-    current.append(label, question);
+    const form = document.createElement("form");
+    form.id = "mentor-interview-form";
+    const answerLabel = document.createElement("label");
+    answerLabel.className = "field-label";
+    answerLabel.htmlFor = "mentor-interview-answer";
+    answerLabel.textContent = "Ваш ответ";
+    const answer = document.createElement("textarea");
+    answer.id = "mentor-interview-answer";
+    answer.rows = 4;
+    answer.maxLength = 6000;
+    answer.required = true;
+    answer.placeholder = "Опишите, как вы ответили бы на собеседовании: по шагам и с примерами";
+    const footer = document.createElement("div");
+    footer.className = "mentor-form-footer";
+    const submit = document.createElement("button");
+    submit.className = "button button-primary";
+    submit.id = "mentor-interview-submit";
+    submit.type = "submit";
+    submit.textContent = "Отправить ответ";
+    footer.append(document.createElement("span"), submit);
+    form.append(answerLabel, answer, footer);
+    current.append(label, question, form);
   }
-  const form = $("#mentor-interview-form");
-  form.hidden = !interview.active;
   $("#mentor-interview-start").hidden = Boolean(interview.active);
   $("#mentor-interview-reset").hidden = !interview.active && !(interview.turns || []).length;
   const turns = $("#mentor-interview-turns");
@@ -408,12 +496,15 @@ function renderMentorInterview(interview) {
     const answer = document.createElement("p");
     answer.className = "mentor-interview-answer";
     answer.textContent = turn.answer;
+    const answerLabel = document.createElement("span");
+    answerLabel.className = "mentor-question-answer-label";
+    answerLabel.textContent = "ВАШ ОТВЕТ";
     const score = document.createElement("span");
     score.className = "mentor-score-pill";
     score.textContent = `${turn.score}/10`;
     const feedback = document.createElement("p");
     feedback.textContent = turn.feedback;
-    article.append(question, answer, score, feedback);
+    article.append(question, answerLabel, answer, score, feedback);
     for (const [title, items] of [["Сильные стороны", turn.strengths], ["Что улучшить", turn.improvements]]) {
       if (!items?.length) continue;
       const group = document.createElement("div");
@@ -471,7 +562,10 @@ $("#mentor-assessment-form").addEventListener("submit", async (event) => {
   try {
     const assessment = await request("/api/mentor/assessment", {
       method: "POST",
-      body: JSON.stringify({ vacancy: $("#mentor-vacancy").value, clarifications: $("#mentor-clarifications").value }),
+    body: JSON.stringify({
+      vacancy: $("#mentor-vacancy").value,
+      answers: mergeQuestionAnswers(overviewPlan?.assessment?.clarificationAnswers, collectQuestionAnswers($("#mentor-questions"))),
+    }),
     });
     renderMentorAssessment(assessment);
     setMessage($("#mentor-assessment-status"), "Оценка сохранена локально.");
@@ -544,7 +638,7 @@ $("#mentor-exercise-answer-form").addEventListener("submit", async (event) => {
   try {
     renderMentorExercise(await request("/api/mentor/exercise/review", {
       method: "POST",
-      body: JSON.stringify({ answer: $("#mentor-answer").value }),
+      body: JSON.stringify({ answers: collectQuestionAnswers($("#mentor-exercise-questions")) }),
     }));
     setMessage($("#mentor-exercise-status"), "Обратная связь сохранена.");
   } catch (error) {
@@ -576,7 +670,8 @@ async function mentorInterview(action, answer = "") {
 }
 
 $("#mentor-interview-start").addEventListener("click", () => mentorInterview("start"));
-$("#mentor-interview-form").addEventListener("submit", (event) => {
+$("#mentor-interview-current").addEventListener("submit", (event) => {
+  if (event.target.id !== "mentor-interview-form") return;
   event.preventDefault();
   mentorInterview("answer", $("#mentor-interview-answer").value);
 });

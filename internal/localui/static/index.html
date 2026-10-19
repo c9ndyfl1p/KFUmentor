@@ -214,9 +214,8 @@
               <label class="field-label" for="mentor-vacancy">Целевая вакансия <span class="label-hint">необязательно</span></label>
               <textarea id="mentor-vacancy" rows="3" maxlength="16000" placeholder="Вставьте описание вакансии или оставьте поле пустым для общей оценки профиля"></textarea>
               <div id="mentor-questions-wrap" class="mentor-questions-wrap" hidden>
-                <div id="mentor-questions" class="mentor-questions"></div>
-                <label class="field-label" for="mentor-clarifications">Ваши уточнения</label>
-                <textarea id="mentor-clarifications" rows="3" maxlength="4000" placeholder="Ответьте на вопросы ментора: приведите примеры, цифры или уточните, что вы уже умеете"></textarea>
+                <div id="mentor-clarification-history" class="mentor-clarification-history"></div>
+                <div id="mentor-questions" class="mentor-question-fields"></div>
               </div>
               <div class="mentor-form-footer">
                 <span id="mentor-assessment-status" class="save-message" aria-live="polite"></span>
@@ -262,8 +261,7 @@
               <p id="mentor-exercise-prompt"></p>
               <div><strong>Как будет оцениваться</strong><ul id="mentor-exercise-criteria"></ul></div>
               <form id="mentor-exercise-answer-form">
-                <label class="field-label" for="mentor-answer">Ваш ответ или решение</label>
-                <textarea id="mentor-answer" rows="5" maxlength="10000" placeholder="Опишите ход решения, приложите текст или вставьте ссылку и краткое описание проекта"></textarea>
+                <div id="mentor-exercise-questions" class="mentor-question-fields"></div>
                 <div class="mentor-form-footer"><span id="mentor-exercise-status" class="save-message" aria-live="polite"></span><button class="button button-primary" id="mentor-review-answer" type="submit">Разобрать ответ</button></div>
               </form>
               <div id="mentor-review" class="mentor-review" hidden></div>
@@ -279,11 +277,6 @@
             <div id="mentor-interview-status" class="mentor-status" role="status" aria-live="polite"></div>
             <div id="mentor-interview-current" class="mentor-interview-current" hidden></div>
             <div id="mentor-interview-turns" class="mentor-interview-turns"></div>
-            <form id="mentor-interview-form" hidden>
-              <label class="field-label" for="mentor-interview-answer">Ваш ответ</label>
-              <textarea id="mentor-interview-answer" rows="4" maxlength="6000" placeholder="Напишите ответ так, как сказали бы его вслух"></textarea>
-              <div class="mentor-form-footer"><span></span><button class="button button-primary" id="mentor-interview-submit" type="submit">Отправить ответ</button></div>
-            </form>
             <button class="text-button mentor-interview-reset" id="mentor-interview-reset" type="button" hidden>Завершить интервью</button>
           </section>
 
