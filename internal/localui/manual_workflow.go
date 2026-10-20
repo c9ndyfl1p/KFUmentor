@@ -130,7 +130,7 @@ func (s *server) kickManualWorker() {
 	if err != nil || len(st.Queue) == 0 {
 		return
 	}
-	if !s.beginTask("Выполняю ручное действие…") {
+	if !s.beginTask("Выполняю ручное действие…", true) {
 		return
 	}
 	args := s.taskArguments(taskInput{Task: "Ручная обработка сохранённых вакансий", Visible: true, MinimumScore: s.cfg.MinimumScore, ApplicationTarget: 1, VacancyLimit: 1})

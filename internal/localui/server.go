@@ -628,14 +628,20 @@ func (s *server) handleDeepSeekStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"captchaRequired": status.CaptchaRequired})
 }
 
-func (s *server) beginTask(status string) bool {
+func (s *server) beginTask(status string, preserveSearch ...bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.state.Running {
 		return false
 	}
 	startedAt := time.Now()
-	s.state = taskState{Running: true, Status: status, Cards: []vacancyCard{}, StartedAt: &startedAt}
+	if len(preserveSearch) > 0 && preserveSearch[0] {
+		s.state.Running = true
+		s.state.Status = status
+		s.state.Captcha = false
+	} else {
+		s.state = taskState{Running: true, Status: status, Cards: []vacancyCard{}, StartedAt: &startedAt}
+	}
 	s.cancelRequested = false
 	return true
 }

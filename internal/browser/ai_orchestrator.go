@@ -17,6 +17,7 @@ import (
 	"github.com/mihnpro/Ai_agent_2/internal/llm"
 	agentprompt "github.com/mihnpro/Ai_agent_2/internal/prompt"
 	"github.com/mihnpro/Ai_agent_2/internal/types"
+	"github.com/mihnpro/Ai_agent_2/internal/workflow"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
@@ -596,11 +597,7 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 			"[data-qa='vacancy-response-success']",
 			"button:has-text('Вы откликнулись')",
 			"text=Отклик отправлен",
-			"a:has-text('Перейти в чат')",
-			"button:has-text('Перейти в чат')",
 			"text=Резюме доставлено",
-			"button:has-text('Добавить сопроводительное')",
-			"text=Добавить сопроводительное",
 		}
 		if visibleAny(page, bareSuccessSelectors) {
 			log.Println("ℹ️ hh.ru уже принял отклик; перехожу в чат, чтобы добавить сопроводительное")
@@ -652,6 +649,7 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 		}, 5*time.Second); err != nil {
 			return "", fmt.Errorf("отклик отправлен без письма; после нажатия кнопки поле ввода не появилось: %w", err)
 		}
+		letterOccurrences := visibleLetterOccurrences(page, coverLetter)
 		if err := fillVisibleMessage(page, coverLetter); err != nil {
 			return "", fmt.Errorf("отклик отправлен без письма; после «Добавить сопроводительное» поле не найдено: %w", err)
 		}
@@ -663,7 +661,14 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 		}); err != nil {
 			return "", fmt.Errorf("отклик отправлен, письмо заполнено, но не удалось отправить сопроводительное: %w", err)
 		}
-		return fmt.Sprintf("Отклик и сопроводительное отправлены для '%s' в '%s'", title, company), nil
+		deadline := time.Now().Add(8 * time.Second)
+		for time.Now().Before(deadline) {
+			if visibleLetterOccurrences(page, coverLetter) > letterOccurrences {
+				return fmt.Sprintf("Отклик и сопроводительное отправлены для '%s' в '%s'", title, company), nil
+			}
+			time.Sleep(400 * time.Millisecond)
+		}
+		return "", fmt.Errorf("отклик подтверждён, но сохранение сопроводительного в чате не подтверждено; проверьте чат hh.ru")
 	}
 
 	for _, selector := range submitBtnSelectors {
@@ -690,7 +695,7 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 			deadline := time.Now().Add(8 * time.Second)
 			for time.Now().Before(deadline) {
 				for _, successSel := range successSelectors {
-					if count, _ := page.Locator(successSel).Count(); count > 0 {
+					if visibleAny(page, []string{successSel}) {
 						return fmt.Sprintf("Отклик подтверждён hh.ru для '%s' в '%s'", title, company), nil
 					}
 				}
@@ -717,60 +722,43 @@ func openResponseCard(page playwright.Page, vacancyURL, title, company string) e
 		return fmt.Errorf("не открылась страница «Мои отклики»: %w", err)
 	}
 
-	titles := page.GetByText(title, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)})
-	count, err := titles.Count()
-	if err != nil || count == 0 {
-		return fmt.Errorf("в списке откликов не найдена вакансия «%s»", title)
+	id := workflow.JobID(vacancyURL)
+	if id == "" {
+		return fmt.Errorf("не удалось определить ID вакансии")
 	}
+	links := page.Locator("a[href]")
+	count, _ := links.Count()
 	var match playwright.Locator
-	var firstVisible playwright.Locator
 	for i := 0; i < count; i++ {
-		candidate := titles.Nth(i)
-		visible, _ := candidate.IsVisible()
-		if !visible {
+		candidate := links.Nth(i)
+		href, _ := candidate.GetAttribute("href")
+		resolved := parsed.ResolveReference(mustParseURL(href))
+		if workflow.JobID(resolved.String()) != id {
 			continue
 		}
-		if firstVisible == nil {
-			firstVisible = candidate
-		}
-		if strings.TrimSpace(company) == "" {
+		if visible, _ := candidate.IsVisible(); visible {
 			match = candidate
-			break
-		}
-		containsCompany, evalErr := candidate.Evaluate(`(element, expected) => {
-			let node = element;
-			for (let level = 0; node && level < 10; level += 1, node = node.parentElement) {
-				const text = node.innerText || "";
-				if (text.includes(expected.title) && text.toLowerCase().includes(expected.company.toLowerCase())) return true;
-			}
-			return false;
-		}`, map[string]string{"title": title, "company": company})
-		if evalErr == nil && containsCompany == true {
-			match = candidate
-			cardChat := candidate.Locator("xpath=ancestor::*[.//a[contains(normalize-space(.), 'Перейти в чат')] or .//button[contains(normalize-space(.), 'Перейти в чат')]][1]")
-			if chatCount, _ := cardChat.Count(); chatCount > 0 {
-				if err := clickFirstVisible(cardChat.Locator("a:has-text('Перейти в чат'), button:has-text('Перейти в чат')")); err == nil {
-					return waitForAnyVisible(page, []string{"button:has-text('Добавить сопроводительное')", "text=Добавить сопроводительное"}, 10*time.Second)
-				}
-			}
 			break
 		}
 	}
 	if match == nil {
-		match = firstVisible
+		return fmt.Errorf("в откликах не найдена карточка с ID %s; выбор только по названию запрещён", id)
 	}
-	if match == nil {
-		return fmt.Errorf("карточка вакансии «%s» не отображается в откликах", title)
+	// A vacancy link identifies the response card, but opens the vacancy itself.
+	// Open only the chat belonging to that card, never an unrelated page chat.
+	card := match.Locator("xpath=ancestor::*[.//a[contains(normalize-space(.), 'Перейти в чат')] or .//button[contains(normalize-space(.), 'Перейти в чат')]][1]")
+	if count, _ := card.Count(); count == 0 {
+		return fmt.Errorf("в карточке отклика %s не найден чат; откройте его вручную", id)
 	}
-	if err := match.Click(); err != nil {
-		return fmt.Errorf("не удалось открыть карточку вакансии «%s»: %w", title, err)
+	if err := clickFirstVisible(card.Locator("a:has-text('Перейти в чат'), button:has-text('Перейти в чат')")); err != nil {
+		return fmt.Errorf("не удалось открыть чат вакансии %s: %w", id, err)
 	}
 
 	addLetterSelectors := []string{"button:has-text('Добавить сопроводительное')", "text=Добавить сопроводительное"}
 	if err := waitForAnyVisible(page, append(addLetterSelectors, "a:has-text('Перейти в чат')", "button:has-text('Перейти в чат')"), 8*time.Second); err != nil {
 		return fmt.Errorf("карточка отклика открылась, но действия письма или чата не появились: %w", err)
 	}
-	if clickVisible(page, addLetterSelectors) == nil {
+	if visibleAny(page, addLetterSelectors) {
 		return nil
 	}
 	if err := clickVisible(page, []string{"a:has-text('Перейти в чат')", "button:has-text('Перейти в чат')"}); err != nil {
@@ -1766,4 +1754,38 @@ func validateEvaluation(e *JobEvaluationResult) error {
 
 func hasEvaluationFacts(profile types.Resume) bool {
 	return strings.TrimSpace(profile.Summary) != "" || len(profile.Skills) > 0 || len(profile.Experience) > 0 || len(profile.Projects) > 0 || len(profile.Achievements) > 0 || len(profile.Education) > 0 || len(profile.Languages) > 0
+}
+
+func mustParseURL(raw string) *url.URL {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return &url.URL{}
+	}
+	return parsed
+}
+
+// Count rendered exact copies outside the editor. Text remaining in a textarea
+// or contenteditable is not proof that a message was saved.
+func visibleLetterOccurrences(page playwright.Page, letter string) int {
+	value, err := page.Evaluate(`(letter) => {
+ const normalize = s => s.replace(/\s+/g, " ").trim();
+ const expected = normalize(letter);
+ return Array.from(document.querySelectorAll("body *")).filter(e => {
+ if (e.closest("textarea, input, [contenteditable='true']")) return false;
+ const style = getComputedStyle(e);
+ if (!e.getClientRects().length || style.visibility === "hidden" || style.display === "none") return false;
+ if (normalize(e.innerText || "") !== expected) return false;
+ return !Array.from(e.children).some(c => normalize(c.innerText || "") === expected);
+ }).length;
+}`, letter)
+	if err != nil {
+		return 0
+	}
+	if count, ok := value.(int); ok {
+		return count
+	}
+	if count, ok := value.(float64); ok {
+		return int(count)
+	}
+	return 0
 }
