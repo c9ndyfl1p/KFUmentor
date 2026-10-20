@@ -29,6 +29,9 @@ func currentStore() *workflow.Store {
 	return &workflow.Store{Path: p}
 }
 func (a *AIOrchestrator) rememberJob(job types.Job, evaluation *JobEvaluationResult, evalErr error, starting bool) error {
+	if detailed, ok := a.cachedJobDetails(job.URL); ok {
+		job = detailed
+	}
 	store := currentStore()
 	if store == nil {
 		return nil

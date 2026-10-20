@@ -108,6 +108,9 @@ func (a *AIOrchestrator) cacheJobDetails(url string, job types.Job) {
 }
 
 func readJobDetails(page playwright.Page, job types.Job) (types.Job, error) {
+	if salary := readJobSalary(page); salary != "" {
+		job.Salary = salary
+	}
 	description := page.Locator("[data-qa='vacancy-description'], .vacancy-description").First()
 	if err := description.WaitFor(playwright.LocatorWaitForOptions{
 		State: playwright.WaitForSelectorStateVisible, Timeout: playwright.Float(15000),
@@ -132,4 +135,25 @@ func readJobDetails(page playwright.Page, job types.Job) (types.Job, error) {
 		}
 	}
 	return job, nil
+}
+
+// Preserve the employer's wording, including currency, period and tax terms.
+// Restrict extraction to salary elements: numbers in the description are not pay.
+func readJobSalary(page playwright.Page) string {
+	for _, selector := range []string{"[data-qa='vacancy-salary']", "[data-qa='vacancy-salary-compensation-type-net']", "[data-qa='vacancy-salary-compensation-type-gross']"} {
+		items := page.Locator(selector)
+		count, _ := items.Count()
+		for i := 0; i < count; i++ {
+			item := items.Nth(i)
+			if visible, _ := item.IsVisible(); !visible {
+				continue
+			}
+			if text, err := item.InnerText(); err == nil {
+				if text = strings.Join(strings.Fields(text), " "); text != "" {
+					return text
+				}
+			}
+		}
+	}
+	return ""
 }

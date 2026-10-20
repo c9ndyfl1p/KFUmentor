@@ -1121,3 +1121,5 @@ h1, .overview-heading h1, .search-card h1, .profile-card h1 { color: #21352c; fo
   .profile-card .profile-identity .profile-view-actions > .text-button { width: max-content; max-width: 100%; min-height: 44px; flex: 0 0 auto; align-self: flex-end; margin: 0; text-align: center; }
   .profile-details-button { width: 100%; justify-self: stretch; text-align: left; }
 }
+
+.vacancy-salary { margin: 8px 0; color: var(--ink); font-weight: 600; white-space: normal; overflow-wrap: anywhere; }

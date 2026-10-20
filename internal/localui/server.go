@@ -76,6 +76,7 @@ type taskState struct {
 }
 
 type vacancyCard struct {
+	Salary       string   `json:"salary,omitempty"`
 	ID           string   `json:"id,omitempty"`
 	CanDraft     bool     `json:"canDraft,omitempty"`
 	CanSend      bool     `json:"canSend,omitempty"`

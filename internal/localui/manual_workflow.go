@@ -55,7 +55,7 @@ func workflowCards(st workflow.State) []vacancyCard {
 		case "assessed":
 			status = "recommended"
 		}
-		c := vacancyCard{ID: e.ID, Index: i + 1, Title: e.Job.Title, URL: safeVacancyURL(e.Job.URL), Status: status, Stage: stage, Score: e.Score, Summary: e.Reason, Details: e.Error, ReviewPoints: e.ReviewPoints, Submission: e.Submission, Letter: e.Letter, Version: e.Version, CanDraft: e.CanDraft(), CanSend: e.Status == "draft_ready" && e.Submission == "", CanRetry: e.Status == "error" && e.Submission == ""}
+		c := vacancyCard{ID: e.ID, Index: i + 1, Title: e.Job.Title, Salary: e.Job.Salary, URL: safeVacancyURL(e.Job.URL), Status: status, Stage: stage, Score: e.Score, Summary: e.Reason, Details: e.Error, ReviewPoints: e.ReviewPoints, Submission: e.Submission, Letter: e.Letter, Version: e.Version, CanDraft: e.CanDraft(), CanSend: e.Status == "draft_ready" && e.Submission == "", CanRetry: e.Status == "error" && e.Submission == ""}
 		if c.Details == "" {
 			c.Details = e.LetterWarning
 		}

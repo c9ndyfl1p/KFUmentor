@@ -8,6 +8,7 @@ const DefaultMinimumScore = 7
 const MaxMatchScore = 10
 
 type Job struct {
+	Salary      string `json:"salary,omitempty"`
 	Title       string `json:"title"`
 	Company     string `json:"company"`
 	URL         string `json:"url"`

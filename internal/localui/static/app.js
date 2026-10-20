@@ -894,7 +894,10 @@ function renderVacancyCards(cards, running, minimumScore = 0) {
     progress.className = "vacancy-progress-stage";
     progress.textContent = item.stage || "Ожидает обработки";
 
-    card.append(heading, title, progress);
+    const salary = document.createElement("p");
+    salary.className = "vacancy-salary";
+    salary.textContent = String(item.salary || "").trim() || "Зарплата не указана";
+    card.append(heading, title, salary, progress);
     if (item.score) {
       const score = document.createElement("span");
       score.className = "vacancy-score";

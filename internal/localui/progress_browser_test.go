@@ -15,7 +15,7 @@ func TestProgressBrowser(t *testing.T) {
 		t.Skip("opt-in local browser test")
 	}
 	s := &server{state: taskState{MinimumScore: 6, Status: "Поиск завершён", Summary: "📨 ОТКЛИКИ: 0 из 2", Cards: []vacancyCard{
-		{ID: "123", CanDraft: true, ReviewPoints: []string{"Не подтверждён опыт", "Готовы к работе в офисе?"}, Index: 1, Title: "Ручная проверка", Score: 6, Status: "review", Result: "Нужна ручная проверка"},
+		{ID: "123", CanDraft: true, ReviewPoints: []string{"Не подтверждён опыт", "Готовы к работе в офисе?"}, Index: 1, Title: "Ручная проверка", Salary: "от 80 000 ₽ за месяц, на руки", Score: 6, Status: "review", Result: "Нужна ручная проверка"},
 		{Index: 2, Title: "Низкая оценка", Score: 3, Status: "skipped"},
 		{Index: 3, Title: "Ошибка модели", Status: "error", Details: "Нет ответа"},
 		{Index: 4, Title: "В работе", Status: "running"},
@@ -106,7 +106,7 @@ func TestProgressBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"Ручная проверка", "Ошибка модели", "В работе", "Отправлено ниже порога", "Без письма ниже порога", "Ошибка письма ниже порога", "Результат неизвестен", "Отклик уже существует", "Сохранённый черновик ниже порога"} {
+	for _, expected := range []string{"от 80 000 ₽ за месяц, на руки", "Зарплата не указана", "Ручная проверка", "Ошибка модели", "В работе", "Отправлено ниже порога", "Без письма ниже порога", "Ошибка письма ниже порога", "Результат неизвестен", "Отклик уже существует", "Сохранённый черновик ниже порога"} {
 		if !strings.Contains(text, expected) {
 			t.Fatal("missing card", expected, text)
 		}
