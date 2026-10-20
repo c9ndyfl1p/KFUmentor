@@ -904,6 +904,11 @@ function renderVacancyCards(cards, running, minimumScore = 0) {
       score.textContent = `Совпадение ${item.score}/10`;
       card.append(score);
     }
+    if(item.roleMatch) {
+      const role=document.createElement("p");role.className="vacancy-result";
+      role.textContent=({direct:"Направление соответствует запросу",related:"Смежное направление — отличается характер задач",different:"Другое профессиональное направление"})[item.roleMatch] || "";
+      if(role.textContent)card.append(role);
+    }
     if (item.result) {
       const result = document.createElement("p");
       result.className = "vacancy-result";
@@ -937,6 +942,7 @@ function hideCitySuggestions() {
 
 function chooseCity(item) {
   areaIDField.value = String(item.id);
+ cityField.dataset.areaName=item.name;
   cityField.value = item.path ? `${item.name} · ${item.path}` : item.name;
   cityHint.textContent = `Выбран регион hh.ru: ${cityField.value}`;
   cityHint.classList.remove("is-error");
@@ -1206,6 +1212,7 @@ async function launchSearch(task, profileMatch = false) {
       body: JSON.stringify({
         task,
         areaId: Number(areaIDField.value || 0),
+        areaName: areaIDField.value ? (cityField.dataset.areaName || cityField.value.split(" · ")[0]).trim() : "",
         autoApply: !profileMatch && $("#auto-apply").checked,
  applyByScore: !$("#application-policy").checked,
         applicationTarget: !profileMatch && $("#auto-apply").checked ? Number($("#application-target").value) : 0,

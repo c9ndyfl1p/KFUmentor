@@ -58,7 +58,7 @@ func (s *server) taskArguments(input taskInput) []string {
 		"--debug=" + fmt.Sprint(s.cfg.Debug),
 	}
 	if input.AreaID > 0 {
-		args = append(args, "--area="+fmt.Sprint(input.AreaID))
+		args = append(args, "--area="+fmt.Sprint(input.AreaID), "--area-name="+input.AreaName)
 	}
 	return args
 }

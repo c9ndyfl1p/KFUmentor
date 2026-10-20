@@ -18,27 +18,31 @@ import (
 )
 
 type Entry struct {
-	Hidden           bool      `json:"hidden,omitempty"`
-	ID               string    `json:"id"`
-	Job              types.Job `json:"job"`
-	RunID            string    `json:"runId"`
-	Task             string    `json:"task"`
-	Threshold        int       `json:"threshold"`
-	ByScore          bool      `json:"byScore"`
-	Score            int       `json:"score"`
-	Recommendation   string    `json:"recommendation"`
-	Reason           string    `json:"reason"`
-	ReviewPoints     []string  `json:"reviewPoints,omitempty"`
-	Status           string    `json:"status"`
-	Stage            string    `json:"stage"`
-	Error            string    `json:"error,omitempty"`
-	Submission       string    `json:"submission,omitempty"` // sending/sent/without_letter/uncertain/already
-	Letter           string    `json:"letter,omitempty"`
-	Version          string    `json:"version,omitempty"`
-	ProfileHash      string    `json:"profileHash,omitempty"`
-	LetterValidation string    `json:"letterValidation,omitempty"`
-	LetterWarning    string    `json:"letterWarning,omitempty"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	Hidden           bool                   `json:"hidden,omitempty"`
+	ID               string                 `json:"id"`
+	Job              types.Job              `json:"job"`
+	RunID            string                 `json:"runId"`
+	SearchContext    types.SearchContext    `json:"searchContext,omitempty"`
+	ModelScore       int                    `json:"modelScore,omitempty"`
+	RoleMatch        string                 `json:"roleMatch,omitempty"`
+	Gaps             []types.RequirementGap `json:"mandatoryGaps,omitempty"`
+	Task             string                 `json:"task"`
+	Threshold        int                    `json:"threshold"`
+	ByScore          bool                   `json:"byScore"`
+	Score            int                    `json:"score"`
+	Recommendation   string                 `json:"recommendation"`
+	Reason           string                 `json:"reason"`
+	ReviewPoints     []string               `json:"reviewPoints,omitempty"`
+	Status           string                 `json:"status"`
+	Stage            string                 `json:"stage"`
+	Error            string                 `json:"error,omitempty"`
+	Submission       string                 `json:"submission,omitempty"` // sending/sent/without_letter/uncertain/already
+	Letter           string                 `json:"letter,omitempty"`
+	Version          string                 `json:"version,omitempty"`
+	ProfileHash      string                 `json:"profileHash,omitempty"`
+	LetterValidation string                 `json:"letterValidation,omitempty"`
+	LetterWarning    string                 `json:"letterWarning,omitempty"`
+	UpdatedAt        time.Time              `json:"updatedAt"`
 }
 type Run struct {
 	Target int `json:"target"`

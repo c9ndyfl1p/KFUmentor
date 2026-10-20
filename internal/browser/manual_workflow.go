@@ -64,6 +64,7 @@ func (a *AIOrchestrator) rememberJob(job types.Job, evaluation *JobEvaluationRes
 		}()
 		e.RunID = os.Getenv("KFUMENTOR_RUN_ID")
 		e.Task = a.currentTask
+		e.SearchContext = types.SearchContext{AreaID: a.areaID, AreaName: a.areaName}
 		e.Threshold = a.minimumScore
 		e.ByScore = a.applyByScore
 		e.UpdatedAt = time.Now()
@@ -78,6 +79,10 @@ func (a *AIOrchestrator) rememberJob(job types.Job, evaluation *JobEvaluationRes
 			e.Stage = "Ошибка оценки"
 			e.Error = evalErr.Error()
 			e.Score = 0
+			e.ModelScore = 0
+			e.Recommendation = ""
+			e.RoleMatch = ""
+			e.Gaps = nil
 			e.Reason = ""
 			e.ReviewPoints = nil
 			e.Letter = ""
@@ -88,6 +93,9 @@ func (a *AIOrchestrator) rememberJob(job types.Job, evaluation *JobEvaluationRes
 			return fmt.Errorf("модель не вернула оценку")
 		}
 		e.Score = evaluation.MatchScore
+		e.ModelScore = evaluation.ModelScore
+		e.RoleMatch = evaluation.RoleMatch
+		e.Gaps = evaluation.Gaps
 		e.Recommendation = evaluation.Recommendation
 		e.Reason = evaluation.Reason
 		e.ReviewPoints = evaluation.ReviewPoints
@@ -250,7 +258,10 @@ func (a *AIOrchestrator) drainManualQueue() error {
 		case "retry":
 			// Enqueueing a retry never authorizes a new automatic application.
 			a.jobDetails = map[string]types.Job{}
+			previousArea, previousName := a.areaID, a.areaName
+			a.areaID, a.areaName = e.SearchContext.AreaID, e.SearchContext.AreaName
 			evaluation, evalErr := a.evaluateJobForTaskWithAnalysis(e.Job, e.Task)
+			a.areaID, a.areaName = previousArea, previousName
 			err = store.Update(func(st *workflow.State) error {
 				item := st.Entries[e.ID]
 				if detailed, ok := a.cachedJobDetails(e.Job.URL); ok {
@@ -276,12 +287,19 @@ func (a *AIOrchestrator) drainManualQueue() error {
 					item.Status = "error"
 					item.Stage = "Ошибка повторной оценки"
 					item.Score = 0
+					item.ModelScore = 0
+					item.Recommendation = ""
+					item.RoleMatch = ""
+					item.Gaps = nil
 					item.Reason = ""
 					item.ReviewPoints = nil
 					item.Error = evalErr.Error()
 					return nil
 				}
 				item.Score = evaluation.MatchScore
+				item.ModelScore = evaluation.ModelScore
+				item.RoleMatch = evaluation.RoleMatch
+				item.Gaps = evaluation.Gaps
 				item.Recommendation = evaluation.Recommendation
 				item.Reason = evaluation.Reason
 				item.ReviewPoints = evaluation.ReviewPoints

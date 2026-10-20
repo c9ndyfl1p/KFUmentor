@@ -8,17 +8,21 @@ const DefaultMinimumScore = 7
 const MaxMatchScore = 10
 
 type Job struct {
-	ApplicationMode   string `json:"application_mode,omitempty"`
-	ApplicationURL    string `json:"application_url,omitempty"`
-	DescriptionStatus string `json:"description_status,omitempty"`
-	Salary            string `json:"salary,omitempty"`
-	Title             string `json:"title"`
-	Company           string `json:"company"`
-	URL               string `json:"url"`
-	Snippet           string `json:"snippet"`
-	Applied           bool   `json:"applied"`
-	ApplyResult       string `json:"apply_result,omitempty"`
-	MatchScore        int    `json:"match_score,omitempty"`
+	ExperienceRequirement string `json:"experience_requirement,omitempty"`
+	Employment            string `json:"employment,omitempty"`
+	WorkFormat            string `json:"work_format,omitempty"`
+	Location              string `json:"location,omitempty"`
+	ApplicationMode       string `json:"application_mode,omitempty"`
+	ApplicationURL        string `json:"application_url,omitempty"`
+	DescriptionStatus     string `json:"description_status,omitempty"`
+	Salary                string `json:"salary,omitempty"`
+	Title                 string `json:"title"`
+	Company               string `json:"company"`
+	URL                   string `json:"url"`
+	Snippet               string `json:"snippet"`
+	Applied               bool   `json:"applied"`
+	ApplyResult           string `json:"apply_result,omitempty"`
+	MatchScore            int    `json:"match_score,omitempty"`
 }
 
 type Config struct {
@@ -29,6 +33,7 @@ type Config struct {
 	ProfileDir        string
 	ModelURL          string
 	ModelName         string
+	AreaName          string
 	AreaID            int
 	MaxJobs           int
 	ApplyByScore      bool
@@ -110,4 +115,16 @@ func GetJob(title, company, url, snippet string) Job {
 // Nonstandard pages are readable but require the employer's own form.
 func (j Job) RequiresManualApplication() bool {
 	return j.ApplicationMode != "" && j.ApplicationMode != "standard"
+}
+
+type SearchContext struct {
+	AreaID   int    `json:"area_id,omitempty"`
+	AreaName string `json:"area_name,omitempty"`
+}
+
+type RequirementGap struct {
+	Kind           string `json:"kind"`
+	VacancyQuote   string `json:"vacancy_quote"`
+	CandidateQuote string `json:"candidate_quote"`
+	Status         string `json:"status"`
 }

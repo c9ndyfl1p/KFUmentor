@@ -206,6 +206,10 @@ func readJobDetails(page playwright.Page, job types.Job) (types.Job, error) {
 		}
 	}
 	text = strings.Join(cleanLines, "\n")
+	job.ExperienceRequirement = firstVisibleJobText(page, []string{"[data-qa='vacancy-experience']", "[data-qa='work-experience-text']"})
+	job.Employment = firstVisibleJobText(page, []string{"[data-qa='common-employment-text']"})
+	job.WorkFormat = firstVisibleJobText(page, []string{"[data-qa='work-formats-text']"})
+	job.Location = firstVisibleJobText(page, []string{"[data-qa='vacancy-view-raw-address']", "[data-qa='vacancy-address-with-map']"})
 	job.Snippet = text
 	if salary := readJobSalary(page); salary != "" {
 		job.Salary = salary
@@ -264,6 +268,23 @@ func readJobSalary(page playwright.Page) string {
 				if text = strings.Join(strings.Fields(text), " "); text != "" {
 					return text
 				}
+			}
+		}
+	}
+	return ""
+}
+
+func firstVisibleJobText(page playwright.Page, selectors []string) string {
+	for _, selector := range selectors {
+		items := page.Locator(selector)
+		count, _ := items.Count()
+		for i := 0; i < count; i++ {
+			item := items.Nth(i)
+			if visible, _ := item.IsVisible(); !visible {
+				continue
+			}
+			if text, err := item.InnerText(); err == nil && strings.TrimSpace(text) != "" {
+				return strings.Join(strings.Fields(text), " ")
 			}
 		}
 	}

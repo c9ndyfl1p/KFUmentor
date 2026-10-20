@@ -203,6 +203,7 @@ func RunTask(task string, cfg Config) error {
 			page = orchestrator.page
 		}
 		orchestrator.areaID = cfg.AreaID
+		orchestrator.areaName = cfg.AreaName
 		orchestrator.applicationTarget = cfg.ApplicationTarget
 		orchestrator.vacancyLimit = cfg.MaxJobs
 		orchestrator.minimumScore = cfg.MinimumScore

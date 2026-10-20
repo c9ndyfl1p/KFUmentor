@@ -37,6 +37,7 @@ var scoreLogPattern = regexp.MustCompile(`оценка:\s*(\d+)/10`)
 var evaluationDoneLogPattern = regexp.MustCompile(`Оценка вакансии завершена: оценка:\s*(\d+)/10; рекомендация:\s*(apply|skip|review); причина:\s*(.*)`)
 
 type taskInput struct {
+	AreaName          string `json:"areaName"`
 	Task              string `json:"task"`
 	AreaID            int    `json:"areaId"`
 	AutoApply         bool   `json:"autoApply"`
@@ -76,6 +77,7 @@ type taskState struct {
 }
 
 type vacancyCard struct {
+	RoleMatch         string   `json:"roleMatch,omitempty"`
 	ApplicationURL    string   `json:"applicationUrl,omitempty"`
 	DescriptionStatus string   `json:"descriptionStatus,omitempty"`
 	Salary            string   `json:"salary,omitempty"`
@@ -473,6 +475,14 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	if input.Task == "" || len(input.Task) > 2000 {
 		writeError(w, http.StatusBadRequest, "Введите задачу до 2000 символов")
 		return
+	}
+	if len([]rune(input.AreaName)) > 200 {
+		writeError(w, 400, "Название региона слишком длинное")
+		return
+	}
+	input.AreaName = strings.TrimSpace(input.AreaName)
+	if input.AreaID == 0 {
+		input.AreaName = ""
 	}
 	if input.AreaID < 0 || input.AreaID > 1_000_000 {
 		writeError(w, http.StatusBadRequest, "Указан недопустимый регион")

@@ -57,6 +57,7 @@ func main() {
 	var webAddr string
 	var loginOnly bool
 	var areaID int
+	var areaName string
 
 	flag.StringVar(&task, "task", "", "Task for the agent")
 	flag.BoolVar(&headless, "headless", true, "Run browser in headless mode")
@@ -74,6 +75,7 @@ func main() {
 	flag.BoolVar(&web, "web", false, "Start the local web interface")
 	flag.StringVar(&webAddr, "web-addr", "127.0.0.1:8787", "Local web interface address")
 	flag.BoolVar(&loginOnly, "login-only", false, "Open hh.ru for manual login without starting a search")
+	flag.StringVar(&areaName, "area-name", "", "Selected search area name for evaluation")
 	flag.IntVar(&areaID, "area", 0, "hh.ru area ID for vacancy search")
 	flag.Parse()
 
@@ -119,6 +121,7 @@ func main() {
 		}
 		if areaID > 0 {
 			cfg.AreaID = areaID
+			cfg.AreaName = areaName
 		}
 	}
 

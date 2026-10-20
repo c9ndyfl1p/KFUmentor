@@ -3,6 +3,7 @@ package localui
 import (
 	"github.com/mihnpro/Ai_agent_2/internal/types"
 	"github.com/mihnpro/Ai_agent_2/internal/workflow"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,5 +38,13 @@ func TestQuestionnaireCardsPreserveScoreAndBlockSend(t *testing.T) {
 	st.Entries["1"].Job.ApplicationURL = "javascript:alert(1)"
 	if c := workflowCards(st)[0]; c.ApplicationURL != "https://hh.ru/vacancy/1" {
 		t.Fatal("unsafe URL", c)
+	}
+}
+
+func TestTaskArgumentsCarrySelectedCity(t *testing.T) {
+	s := &server{}
+	args := strings.Join(s.taskArguments(taskInput{Task: "аналитик", AreaID: 107, AreaName: "Чебоксары"}), "\n")
+	if !strings.Contains(args, "--area-name=Чебоксары") || !strings.Contains(args, "--area=107") {
+		t.Fatal(args)
 	}
 }

@@ -168,7 +168,7 @@ func TestEvaluationUsesSummaryAndRejectsInvalidScore(t *testing.T) {
 			if !strings.Contains(request.System, prompt.EvaluationSystem) {
 				t.Error("evaluation or JSON retry omitted scoring rules")
 			}
-			json.NewEncoder(w).Encode(llm.GenerateResponse{Response: fmt.Sprintf(`{"is_relevant":true,"match_score":%d,"recommendation":"review"}`, score)})
+			json.NewEncoder(w).Encode(llm.GenerateResponse{Response: fmt.Sprintf(`{"is_relevant":true,"role_match":"direct","mandatory_gaps":[],"match_score":%d,"recommendation":"apply"}`, score)})
 		})
 		job := types.Job{Title: "ML Engineer", URL: "https://hh.ru/vacancy/1", Snippet: "Python"}
 		a.jobDetails[job.URL] = job
@@ -284,7 +284,7 @@ func TestEvaluationDoesNotDiscardLateRequirementsOrSkills(t *testing.T) {
 		if strings.Contains(request.Prompt, "private@example.test") {
 			t.Error("contact details sent to evaluation model")
 		}
-		json.NewEncoder(w).Encode(llm.GenerateResponse{Response: `{"is_relevant":true,"match_score":3,"recommendation":"skip"}`})
+		json.NewEncoder(w).Encode(llm.GenerateResponse{Response: `{"is_relevant":true,"role_match":"direct","mandatory_gaps":[{"kind":"experience","status":"conflict","vacancy_quote":"Обязателен коммерческий стаж не менее 5 лет, учебные проекты стаж не заменяют.","candidate_quote":"Коммерческого стажа нет"}],"match_score":3,"recommendation":"skip"}`})
 	})
 	a.resume = types.Resume{Summary: "Коммерческого стажа нет", ContactInfo: types.Contact{Email: "private@example.test"}}
 	for i := 0; i < 35; i++ {

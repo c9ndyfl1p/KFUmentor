@@ -31,7 +31,7 @@ func TestNonstandardPageFixtures(t *testing.T) {
 	}
 	defer b.Close()
 	cases := []struct{ name, path, html, mode, salary, contains, errorText string }{
-		{"standard", "/vacancy/1", `<h1>Analyst</h1><div hidden data-qa="vacancy-description">Hidden wrong text</div><div data-qa="vacancy-description">Требуется SQL</div><div data-qa="vacancy-salary">80 000 ₽ за месяц</div>`, "standard", "80 000 ₽ за месяц", "SQL", ""},
+		{"standard", "/vacancy/1", `<h1>Analyst</h1><span data-qa="vacancy-experience">не требуется</span><span data-qa="common-employment-text">Полная занятость</span><span data-qa="work-formats-text">Формат работы: на месте работодателя</span><span data-qa="vacancy-view-raw-address">Чебоксары</span><div hidden data-qa="vacancy-description">Hidden wrong text</div><div data-qa="vacancy-description">Требуется SQL</div><div data-qa="vacancy-salary">80 000 ₽ за месяц</div>`, "standard", "80 000 ₽ за месяц", "SQL", ""},
 		{"article", "/article/31727", `<div class="tmpl_hh_description"><b>Условия:</b><ul><li>Средняя зп за вахту 230 000 - 250 000 руб;</li></ul><b>Требования:</b><p>Права категории Е</p><form>PRIVATE<input value="PRIVATE"></form><p hidden>PRIVATE</p></div><form><input name="phone" value="PRIVATE"><button>Отправить анкету</button></form>`, "questionnaire", "Средняя зп за вахту 230 000 - 250 000 руб;", "Права категории Е", ""},
 		{"survey", "/vrsurvey/iteko_drivers", `<div class="vacancy-description--abc"><p>Водитель категории Е</p><p>На испытательный срок гарантированный доход 6000 руб./сутки + суточные</p></div><form>PRIVATE<button>Отправить анкету</button></form>`, "questionnaire", "На испытательный срок гарантированный доход 6000 руб./сутки + суточные", "Водитель категории Е", ""},
 		{"embedded_form", "/vacancy/1", `<div data-qa="vacancy-description">Требуется SQL</div><form><button>Отправить анкету</button></form>`, "questionnaire", "", "SQL", ""},
@@ -71,6 +71,9 @@ func TestNonstandardPageFixtures(t *testing.T) {
 			}
 			if job.ApplicationMode != tc.mode || job.Salary != tc.salary || !strings.Contains(job.Snippet, tc.contains) || strings.Contains(job.Snippet, "PRIVATE") || job.DescriptionStatus != "ready" {
 				t.Fatalf("wrong extraction: %+v", job)
+			}
+			if tc.name == "standard" && (job.ExperienceRequirement != "не требуется" || job.Location != "Чебоксары" || job.WorkFormat == "") {
+				t.Fatal("header lost", job)
 			}
 			if tc.mode == "questionnaire" {
 				a := &AIOrchestrator{context: ctx, approvedLetter: "This must not be sent", approvedLetterVerified: true}
@@ -175,12 +178,17 @@ func TestQuestionnaireGoesThroughModelAndPersists(t *testing.T) {
 	a := mockAgent(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		data, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(data), "Чебоксары") {
+			t.Error("missing saved city in evaluation")
+		}
 		if strings.Contains(string(data), "PRIVATE") {
 			t.Error("form data leaked to model")
 		}
-		json.NewEncoder(w).Encode(llm.GenerateResponse{Response: `{"is_relevant":true,"reason":"Подтверждены SQL и учебные проекты","match_score":8,"recommendation":"apply","analysis":"SQL соответствует требованиям","requirements":["SQL"],"skills_match":["SQL"],"review_points":[],"blockers_checked":true,"hard_blockers":[]}`})
+		json.NewEncoder(w).Encode(llm.GenerateResponse{Response: `{"role_match":"direct","mandatory_gaps":[],"is_relevant":true,"reason":"Подтверждены SQL и учебные проекты","match_score":8,"recommendation":"apply","analysis":"SQL соответствует требованиям","requirements":["SQL"],"skills_match":["SQL"],"review_points":[],"blockers_checked":true,"hard_blockers":[]}`})
 	})
 	a.resume = types.Resume{Skills: []string{"SQL"}}
+	a.areaID = 107
+	a.areaName = "Чебоксары"
 	pw, err := playwright.Run()
 	if err != nil {
 		t.Fatal(err)
@@ -214,4 +222,24 @@ func TestQuestionnaireGoesThroughModelAndPersists(t *testing.T) {
 	if e.Status != "questionnaire" || e.Score != 8 || e.Job.ApplicationURL != "https://hh.ru/vacancy/1" || e.Submission != "" {
 		t.Fatal(e)
 	}
+	if e.SearchContext.AreaName != "Чебоксары" {
+		t.Fatal("context not persisted", e.SearchContext)
+	}
+	currentStore().Update(func(st *workflow.State) error { st.Entries["1"].Status = "error"; return nil })
+	if err := currentStore().Enqueue("1", "retry", ""); err != nil {
+		t.Fatal(err)
+	}
+	a.areaID = 1
+	a.areaName = "Москва"
+	if err := a.drainManualQueue(); err != nil {
+		t.Fatal(err)
+	}
+	if a.areaName != "Москва" {
+		t.Fatal("retry leaked area context")
+	}
+	st, _ = currentStore().Read()
+	if st.Entries["1"].SearchContext.AreaName != "Чебоксары" || st.Entries["1"].Score != 8 {
+		t.Fatal(st.Entries["1"])
+	}
+
 }
