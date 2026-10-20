@@ -8,14 +8,17 @@ const DefaultMinimumScore = 7
 const MaxMatchScore = 10
 
 type Job struct {
-	Salary      string `json:"salary,omitempty"`
-	Title       string `json:"title"`
-	Company     string `json:"company"`
-	URL         string `json:"url"`
-	Snippet     string `json:"snippet"`
-	Applied     bool   `json:"applied"`
-	ApplyResult string `json:"apply_result,omitempty"`
-	MatchScore  int    `json:"match_score,omitempty"`
+	ApplicationMode   string `json:"application_mode,omitempty"`
+	ApplicationURL    string `json:"application_url,omitempty"`
+	DescriptionStatus string `json:"description_status,omitempty"`
+	Salary            string `json:"salary,omitempty"`
+	Title             string `json:"title"`
+	Company           string `json:"company"`
+	URL               string `json:"url"`
+	Snippet           string `json:"snippet"`
+	Applied           bool   `json:"applied"`
+	ApplyResult       string `json:"apply_result,omitempty"`
+	MatchScore        int    `json:"match_score,omitempty"`
 }
 
 type Config struct {
@@ -102,4 +105,9 @@ func GetJob(title, company, url, snippet string) Job {
 		URL:     url,
 		Snippet: snippet,
 	}
+}
+
+// Nonstandard pages are readable but require the employer's own form.
+func (j Job) RequiresManualApplication() bool {
+	return j.ApplicationMode != "" && j.ApplicationMode != "standard"
 }

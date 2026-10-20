@@ -59,6 +59,9 @@ func (a *AIOrchestrator) generateCoverLetter(title, company string, job types.Jo
 	if err != nil {
 		return "", err
 	}
+	if detailed.RequiresManualApplication() {
+		return "", fmt.Errorf("для этой вакансии требуется анкета работодателя; письмо автоматически не готовится")
+	}
 	examples, err := loadLetterExamples(a.letterExamplesPath)
 	if err != nil {
 		return "", err

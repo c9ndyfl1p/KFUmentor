@@ -180,7 +180,7 @@ func TestEvaluationUsesSummaryAndRejectsInvalidScore(t *testing.T) {
 	}
 }
 
-func TestUnsupportedLetterIsRewrittenThenFallsBackToFacts(t *testing.T) {
+func TestUnsupportedAutomaticLetterIsRejectedAfterRewrite(t *testing.T) {
 	generated, reviewed := 0, 0
 	a := mockAgent(t, func(w http.ResponseWriter, r *http.Request) {
 		var request llm.GenerateRequest
@@ -198,7 +198,7 @@ func TestUnsupportedLetterIsRewrittenThenFallsBackToFacts(t *testing.T) {
 	job := types.Job{Title: "ML Engineer", URL: "https://hh.ru/vacancy/1", Snippet: "Требуется Python"}
 	a.jobDetails[job.URL] = job
 	letter, err := a.generateCoverLetter(job.Title, job.Company, job)
-	if err != nil || generated != 2 || reviewed != 2 || strings.Contains(letter, "пять лет") || !strings.Contains(letter, "Python") {
+	if err == nil || generated != 2 || reviewed != 2 || letter != "" {
 		t.Fatal(letter, generated, reviewed, err)
 	}
 }

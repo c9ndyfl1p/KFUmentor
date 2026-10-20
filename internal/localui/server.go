@@ -76,25 +76,27 @@ type taskState struct {
 }
 
 type vacancyCard struct {
-	Salary       string   `json:"salary,omitempty"`
-	ID           string   `json:"id,omitempty"`
-	CanDraft     bool     `json:"canDraft,omitempty"`
-	CanSend      bool     `json:"canSend,omitempty"`
-	CanRetry     bool     `json:"canRetry,omitempty"`
-	Letter       string   `json:"letter,omitempty"`
-	Version      string   `json:"version,omitempty"`
-	Submission   string   `json:"submission,omitempty"`
-	ReviewPoints []string `json:"reviewPoints,omitempty"`
-	Index        int      `json:"index"`
-	Total        int      `json:"total"`
-	Title        string   `json:"title"`
-	URL          string   `json:"url,omitempty"`
-	Stage        string   `json:"stage"`
-	Status       string   `json:"status"`
-	Score        int      `json:"score,omitempty"`
-	Result       string   `json:"result,omitempty"`
-	Summary      string   `json:"summary,omitempty"`
-	Details      string   `json:"details,omitempty"`
+	ApplicationURL    string   `json:"applicationUrl,omitempty"`
+	DescriptionStatus string   `json:"descriptionStatus,omitempty"`
+	Salary            string   `json:"salary,omitempty"`
+	ID                string   `json:"id,omitempty"`
+	CanDraft          bool     `json:"canDraft,omitempty"`
+	CanSend           bool     `json:"canSend,omitempty"`
+	CanRetry          bool     `json:"canRetry,omitempty"`
+	Letter            string   `json:"letter,omitempty"`
+	Version           string   `json:"version,omitempty"`
+	Submission        string   `json:"submission,omitempty"`
+	ReviewPoints      []string `json:"reviewPoints,omitempty"`
+	Index             int      `json:"index"`
+	Total             int      `json:"total"`
+	Title             string   `json:"title"`
+	URL               string   `json:"url,omitempty"`
+	Stage             string   `json:"stage"`
+	Status            string   `json:"status"`
+	Score             int      `json:"score,omitempty"`
+	Result            string   `json:"result,omitempty"`
+	Summary           string   `json:"summary,omitempty"`
+	Details           string   `json:"details,omitempty"`
 }
 
 type server struct {
@@ -1020,3 +1022,14 @@ func writeError(w http.ResponseWriter, status int, message string) {
 }
 
 var _ io.Writer = (*outputWriter)(nil)
+
+func safeApplicationURL(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || (parsed.Hostname() != "hh.ru" && !strings.HasSuffix(parsed.Hostname(), ".hh.ru")) {
+		return ""
+	}
+	if !strings.HasPrefix(parsed.Path, "/article/") && !strings.HasPrefix(parsed.Path, "/vrsurvey/") && !strings.HasPrefix(parsed.Path, "/vacancy/") {
+		return ""
+	}
+	return parsed.String()
+}

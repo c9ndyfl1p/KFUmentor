@@ -1,8 +1,12 @@
 package browser
 
 import (
+	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mihnpro/Ai_agent_2/internal/types"
 	playwright "github.com/mxschmitt/playwright-go"
@@ -59,7 +63,7 @@ func (a *AIOrchestrator) loadJobDetails(job types.Job) (types.Job, error) {
 }
 
 func (a *AIOrchestrator) loadJobDetailsLocked(job types.Job) (types.Job, error) {
-	if cached, ok := a.cachedJobDetails(job.URL); ok {
+	if cached, ok := a.cachedJobDetails(job.URL); ok && cached.DescriptionStatus != "unreadable" {
 		return cached, nil
 	}
 	page, err := a.context.NewPage()
@@ -85,9 +89,7 @@ func (a *AIOrchestrator) loadJobDetailsLocked(job types.Job) (types.Job, error) 
 		return a.loadJobDetailsLocked(job)
 	}
 	detailed, err := readJobDetails(page, job)
-	if err == nil {
-		a.cacheJobDetails(job.URL, detailed)
-	}
+	a.cacheJobDetails(job.URL, detailed)
 	return detailed, err
 }
 
@@ -107,26 +109,119 @@ func (a *AIOrchestrator) cacheJobDetails(url string, job types.Job) {
 	a.jobDetails[url] = job
 }
 
+var errUnreadableDescription = errors.New("не удалось прочитать описание вакансии")
+
+func classifyJobPage(page playwright.Page, job types.Job) types.Job {
+	finalURL, _ := url.Parse(page.URL())
+	original, _ := url.Parse(job.URL)
+	job.ApplicationMode = "standard"
+	job.ApplicationURL = ""
+	if page.URL() == "about:blank" {
+		return job
+	}
+	if finalURL == nil || finalURL.Scheme != "https" || (finalURL.Hostname() != "hh.ru" && !strings.HasSuffix(finalURL.Hostname(), ".hh.ru")) {
+		job.ApplicationMode = "external"
+	} else if strings.HasPrefix(finalURL.Path, "/vrsurvey/") || strings.HasPrefix(finalURL.Path, "/article/") || visibleAny(page, []string{"button:has-text('Отправить анкету')", "input[type='submit'][value*='анкету']"}) {
+		job.ApplicationMode = "questionnaire"
+		job.ApplicationURL = finalURL.String()
+	} else if original != nil && !strings.HasPrefix(finalURL.Path, "/vacancy/") {
+		job.ApplicationMode = "unsupported"
+	}
+	return job
+}
+
 func readJobDetails(page playwright.Page, job types.Job) (types.Job, error) {
+	job.DescriptionStatus = "unreadable"
+	job = classifyJobPage(page, job)
 	if salary := readJobSalary(page); salary != "" {
 		job.Salary = salary
 	}
-	description := page.Locator("[data-qa='vacancy-description'], .vacancy-description").First()
-	if err := description.WaitFor(playwright.LocatorWaitForOptions{
-		State: playwright.WaitForSelectorStateVisible, Timeout: playwright.Float(15000),
-	}); err != nil {
-		return job, fmt.Errorf("описание вакансии недоступно (возможны вход или CAPTCHA): %w", err)
+	selectors := []string{"[data-qa='vacancy-description']", ".tmpl_hh_description", "[class*='vacancy-description--']", ".vacancy-description"}
+	deadline := time.Now().Add(15 * time.Second)
+	if job.RequiresManualApplication() {
+		deadline = time.Now().Add(6 * time.Second)
 	}
-	text, err := description.InnerText()
-	if err != nil || strings.TrimSpace(text) == "" {
-		return job, fmt.Errorf("описание вакансии пустое")
+	var text string
+	for {
+		if captchaPresent(page) {
+			return job, fmt.Errorf("нужна проверка CAPTCHA в браузере hh.ru")
+		}
+		if strings.Contains(page.URL(), "/account/login") || strings.Contains(page.URL(), "/account/signup") {
+			return job, fmt.Errorf("нужен вход в hh.ru")
+		}
+		if job.ApplicationMode == "external" {
+			return job, fmt.Errorf("%w: переход на внешний сайт; откройте вакансию вручную", errUnreadableDescription)
+		}
+		for _, selector := range selectors {
+			items := page.Locator(selector)
+			count, _ := items.Count()
+			for i := 0; i < count; i++ {
+				item := items.Nth(i)
+				if visible, _ := item.IsVisible(); !visible {
+					continue
+				}
+				value, err := item.Evaluate(`el => {
+     function read(node) {
+      if (node.nodeType===Node.TEXT_NODE) return node.textContent;
+      if (node.nodeType!==Node.ELEMENT_NODE) return '';
+      if (node.matches('script,style,template,form,input,textarea,select,button,[contenteditable],nav,footer')) return '';
+      const style=getComputedStyle(node);
+      if(style.display==='none'||style.visibility==='hidden') return '';
+      if(node.tagName==='BR') return '\n';
+      const text=Array.from(node.childNodes).map(read).join('');
+      return /^(P|DIV|LI|UL|OL|H[1-6]|SECTION|ARTICLE)$/.test(node.tagName) ? '\n'+text+'\n' : text;
+     }
+     return read(el);
+    }`, nil)
+				if err == nil {
+					if value, ok := value.(string); ok && strings.TrimSpace(value) != "" {
+						text = strings.TrimSpace(value)
+						break
+					}
+				}
+			}
+			if text != "" {
+				break
+			}
+		}
+		if text != "" || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+		job = classifyJobPage(page, job)
+	}
+	if text == "" {
+		if job.ApplicationMode == "standard" {
+			job.ApplicationMode = "unsupported"
+		}
+		return job, fmt.Errorf("%w: формат страницы не поддерживается или описание не загрузилось; откройте страницу вручную", errUnreadableDescription)
 	}
 	if len([]rune(text)) > 40000 {
-		return job, fmt.Errorf("описание вакансии превышает 40 000 символов; нужна ручная проверка без усечения требований")
+		return job, fmt.Errorf("%w: описание превышает 40 000 символов; нужна ручная проверка без усечения требований", errUnreadableDescription)
 	}
+	var cleanLines []string
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.Join(strings.Fields(line), " "); line != "" {
+			cleanLines = append(cleanLines, line)
+		}
+	}
+	text = strings.Join(cleanLines, "\n")
 	job.Snippet = text
-	if title, err := page.Locator("h1").First().InnerText(); err == nil && strings.TrimSpace(title) != "" {
-		job.Title = strings.TrimSpace(title)
+	if salary := readJobSalary(page); salary != "" {
+		job.Salary = salary
+	}
+	job.DescriptionStatus = "ready"
+	if job.ApplicationMode == "questionnaire" && job.Salary == "" {
+		job.Salary = salaryFromDescription(text)
+	}
+	// A landing page heading may be an ad slogan; retain the search result title.
+	if job.ApplicationMode == "standard" {
+		titles := page.Locator("h1")
+		if count, _ := titles.Count(); count > 0 {
+			if title, err := titles.First().InnerText(); err == nil && strings.TrimSpace(title) != "" {
+				job.Title = strings.TrimSpace(title)
+			}
+		}
 	}
 	company := page.Locator("[data-qa='vacancy-company-name'], .vacancy-company-name").First()
 	if count, _ := company.Count(); count > 0 {
@@ -135,6 +230,23 @@ func readJobDetails(page playwright.Page, job types.Job) (types.Job, error) {
 		}
 	}
 	return job, nil
+}
+
+var incomeWords = regexp.MustCompile(`(?i)(зарплат|заработн|зп|доход|оклад|стоимость километра|суточные)`)
+var moneyAmount = regexp.MustCompile(`(?i)\d[\d\s.,–—-]*(₽|руб|₸|тенге|€|евро|\$|доллар)`)
+
+func salaryFromDescription(description string) string {
+	var lines []string
+	for _, line := range strings.Split(description, "\n") {
+		line = strings.Join(strings.Fields(line), " ")
+		if len([]rune(line)) <= 500 && incomeWords.MatchString(line) && moneyAmount.MatchString(line) {
+			lines = append(lines, line)
+		}
+		if len(lines) == 3 {
+			break
+		}
+	}
+	return strings.Join(lines, "; ")
 }
 
 // Preserve the employer's wording, including currency, period and tax terms.

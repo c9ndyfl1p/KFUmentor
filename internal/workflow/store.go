@@ -80,6 +80,9 @@ func JobID(raw string) string {
 	return strconv.FormatUint(n, 10)
 }
 func (e *Entry) CanDraft() bool {
+	if e.Job.RequiresManualApplication() {
+		return false
+	}
 	manualRecommendation := e.Recommendation == "apply" || (e.Recommendation == "review" && !e.ByScore)
 	manualStatus := e.Status == "assessed" || e.Status == "review" || e.Status == "draft_error" || e.Status == "draft_ready"
 	return e.Submission == "" && manualRecommendation && e.Score >= e.Threshold && manualStatus
@@ -202,6 +205,9 @@ func (s *Store) Enqueue(id, kind, version string) error {
 			e.LetterValidation = ""
 			e.LetterWarning = ""
 		case "send":
+			if e.Job.RequiresManualApplication() {
+				return fmt.Errorf("для этой вакансии требуется анкета работодателя")
+			}
 			if e.Status != "draft_ready" || version == "" || version != e.Version {
 				return fmt.Errorf("сначала просмотрите актуальное письмо")
 			}
@@ -215,7 +221,7 @@ func (s *Store) Enqueue(id, kind, version string) error {
 			e.Status = "queued_send"
 			e.Stage = "Отклик в очереди"
 		case "retry":
-			if e.Status != "error" {
+			if e.Status != "error" && !(e.Status == "questionnaire" && e.Job.DescriptionStatus == "ready" && e.Error != "") {
 				return fmt.Errorf("оценку этой вакансии нельзя повторить сейчас")
 			}
 			e.Status = "queued_retry"
@@ -247,6 +253,11 @@ func (s *Store) Claim() (*Command, *Entry, error) {
 		}
 		if e == nil {
 			return fmt.Errorf("вакансия исчезла из истории")
+		}
+		if e.Job.RequiresManualApplication() && c.Kind != "retry" {
+			e.Status = "questionnaire"
+			e.Stage = "Откройте анкету работодателя вручную"
+			return nil
 		}
 		if c.Kind == "send" {
 			if r := st.Runs[c.BudgetRunID]; r != nil && r.Target > 0 && r.Sent >= r.Target {

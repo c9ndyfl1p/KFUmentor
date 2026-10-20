@@ -510,10 +510,13 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 		}
 	}
 	detailed, err := readJobDetails(page, job)
+	a.cacheJobDetails(job.URL, detailed)
 	if err != nil {
 		return "", err
 	}
-	a.cacheJobDetails(job.URL, detailed)
+	if detailed.RequiresManualApplication() {
+		return "", fmt.Errorf("вместо стандартного отклика нужна анкета работодателя; откройте её вручную")
+	}
 	title, company := detailed.Title, detailed.Company
 	coverLetter := a.approvedLetter
 	if coverLetter == "" {

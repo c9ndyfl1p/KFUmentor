@@ -55,7 +55,23 @@ func workflowCards(st workflow.State) []vacancyCard {
 		case "assessed":
 			status = "recommended"
 		}
-		c := vacancyCard{ID: e.ID, Index: i + 1, Title: e.Job.Title, Salary: e.Job.Salary, URL: safeVacancyURL(e.Job.URL), Status: status, Stage: stage, Score: e.Score, Summary: e.Reason, Details: e.Error, ReviewPoints: e.ReviewPoints, Submission: e.Submission, Letter: e.Letter, Version: e.Version, CanDraft: e.CanDraft(), CanSend: e.Status == "draft_ready" && e.Submission == "", CanRetry: e.Status == "error" && e.Submission == ""}
+		c := vacancyCard{ID: e.ID, Index: i + 1, Title: e.Job.Title, Salary: e.Job.Salary, DescriptionStatus: e.Job.DescriptionStatus, URL: safeVacancyURL(e.Job.URL), Status: status, Stage: stage, Score: e.Score, Summary: e.Reason, Details: e.Error, ReviewPoints: e.ReviewPoints, Submission: e.Submission, Letter: e.Letter, Version: e.Version, CanDraft: e.CanDraft(), CanSend: e.Status == "draft_ready" && e.Submission == "", CanRetry: e.Status == "error" && e.Submission == ""}
+		if e.Job.RequiresManualApplication() && e.Submission == "" {
+			c.CanDraft = false
+			c.CanSend = false
+			c.ApplicationURL = safeApplicationURL(e.Job.ApplicationURL)
+			if c.ApplicationURL == "" {
+				c.ApplicationURL = c.URL
+			}
+			c.CanRetry = e.Job.DescriptionStatus == "ready" && e.Error != "" && (e.Status == "questionnaire" || e.Status == "error")
+			if e.Job.ApplicationMode == "questionnaire" {
+				c.Status = "questionnaire"
+				c.Stage = "Анкета работодателя — требуется заполнение"
+			} else {
+				c.Status = "unreadable"
+				c.Stage = "Не удалось прочитать описание"
+			}
+		}
 		if c.Details == "" {
 			c.Details = e.LetterWarning
 		}

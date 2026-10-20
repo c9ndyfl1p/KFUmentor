@@ -25,6 +25,8 @@ func TestProgressBrowser(t *testing.T) {
 		{Index: 8, Title: "Результат неизвестен", Status: "error", Submission: "uncertain"},
 		{Index: 9, Title: "Отклик уже существует", Score: 1, Status: "skipped", Submission: "already"},
 		{Index: 10, Title: "Сохранённый черновик ниже порога", Score: 3, Status: "ready"},
+		{ID: "form", Index: 11, Title: "Анкета водителя", Status: "questionnaire", Score: 8, Salary: "230 000 руб за вахту", ApplicationURL: "https://hh.ru/article/31727", Stage: "Анкета работодателя — требуется заполнение"},
+		{ID: "unknown", Index: 12, Title: "Неизвестный формат", Status: "unreadable", DescriptionStatus: "unreadable", ApplicationURL: "https://hh.ru/vacancy/12"},
 	}}}
 	actions := make(chan string, 4)
 	mux := http.NewServeMux()
@@ -110,6 +112,16 @@ func TestProgressBrowser(t *testing.T) {
 		if !strings.Contains(text, expected) {
 			t.Fatal("missing card", expected, text)
 		}
+	}
+	if !strings.Contains(text, "230 000 руб за вахту") || !strings.Contains(text, "Не удалось получить зарплату") {
+		t.Fatal("missing nonstandard salary state", text)
+	}
+	form := page.Locator("article").Filter(playwright.LocatorFilterOptions{HasText: "Анкета водителя"})
+	if count, _ := form.Locator("a:has-text('Открыть анкету')").Count(); count != 1 {
+		t.Fatal("missing questionnaire link")
+	}
+	if count, _ := form.Locator("button:has-text('Откликнуться'), button:has-text('Повторить оценку')").Count(); count != 0 {
+		t.Fatal("questionnaire shows invalid actions")
 	}
 	if strings.Contains(text, "Низкая оценка") {
 		t.Fatal("threshold ignored")

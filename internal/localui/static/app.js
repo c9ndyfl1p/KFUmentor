@@ -840,7 +840,7 @@ function renderVacancyCards(cards, running, minimumScore = 0) {
   vacancyCards.replaceChildren();
   const matchingCards = cards.filter((item) => {
     // Outcome and problem cards must not disappear when the score filter changes.
-    if (item.submission || ["error", "success", "warning", "stopped", "running", "applying", "queued", "ready"].includes(item.status)) return true;
+    if (item.submission || ["error", "success", "warning", "stopped", "running", "applying", "queued", "ready", "questionnaire", "unreadable"].includes(item.status)) return true;
     const score = Number(item.score || 0);
     if (score > 0) return score >= minimumScore;
     return false;
@@ -873,7 +873,7 @@ function renderVacancyCards(cards, running, minimumScore = 0) {
     position.textContent = `Вакансия ${item.index}${item.total ? ` из ${item.total}` : ""}`;
     const state = document.createElement("span");
     state.className = "vacancy-state";
-    state.textContent = ({ running: "В работе", applying: "Отклик", success: "Готово", skipped: "Пропущена", stopped: "Остановлено", error: "Ошибка", review: "Ручная проверка", queued: "В очереди", ready: "Письмо готово", recommended: "Рекомендована", warning: "Требует внимания" })[item.status] || "В работе";
+    state.textContent = ({ running: "В работе", applying: "Отклик", success: "Готово", skipped: "Пропущена", stopped: "Остановлено", error: "Ошибка", review: "Ручная проверка", queued: "В очереди", ready: "Письмо готово", recommended: "Рекомендована", questionnaire:"Анкета работодателя", unreadable:"Нужен просмотр", warning: "Требует внимания" })[item.status] || "В работе";
     heading.append(position, state);
 
     const title = document.createElement("h3");
@@ -896,7 +896,7 @@ function renderVacancyCards(cards, running, minimumScore = 0) {
 
     const salary = document.createElement("p");
     salary.className = "vacancy-salary";
-    salary.textContent = String(item.salary || "").trim() || "Зарплата не указана";
+    salary.textContent = String(item.salary || "").trim() || (item.descriptionStatus === "unreadable" ? "Не удалось получить зарплату" : "Зарплата не указана");
     card.append(heading, title, salary, progress);
     if (item.score) {
       const score = document.createElement("span");

@@ -51,6 +51,17 @@ func (a *AIOrchestrator) rememberJob(job types.Job, evaluation *JobEvaluationRes
 		}
 		e.Hidden = false
 		e.Job = job
+		defer func() {
+			if job.RequiresManualApplication() {
+				if job.ApplicationMode == "questionnaire" {
+					e.Status = "questionnaire"
+					e.Stage = "Анкета работодателя — требуется заполнение"
+				} else {
+					e.Status = "unreadable"
+					e.Stage = "Не удалось прочитать описание"
+				}
+			}
+		}()
 		e.RunID = os.Getenv("KFUMENTOR_RUN_ID")
 		e.Task = a.currentTask
 		e.Threshold = a.minimumScore
@@ -67,6 +78,10 @@ func (a *AIOrchestrator) rememberJob(job types.Job, evaluation *JobEvaluationRes
 			e.Stage = "Ошибка оценки"
 			e.Error = evalErr.Error()
 			e.Score = 0
+			e.Reason = ""
+			e.ReviewPoints = nil
+			e.Letter = ""
+			e.Version = ""
 			return nil
 		}
 		if evaluation == nil {
@@ -96,12 +111,22 @@ func (a *AIOrchestrator) evaluateTracked(job types.Job) (*JobEvaluationResult, e
 		return nil, err
 	}
 	evaluation, err := a.evaluateJobForTaskWithAnalysis(job, a.currentTask)
+	if err != nil {
+		job.DescriptionStatus = "unreadable"
+	}
 	if saveErr := a.rememberJob(job, evaluation, err, false); saveErr != nil {
 		return nil, saveErr
 	}
 	return evaluation, err
 }
 func (a *AIOrchestrator) reserveSubmission(job types.Job) error {
+	if detailed, ok := a.cachedJobDetails(job.URL); ok {
+		job = detailed
+	}
+	if job.RequiresManualApplication() {
+		return fmt.Errorf("для этой вакансии требуется ручная анкета; отклик не отправлялся")
+	}
+
 	store := currentStore()
 	if store == nil {
 		return nil
@@ -135,6 +160,9 @@ func (a *AIOrchestrator) finishSubmission(job types.Job, runID, result string, s
 		}
 		if e.Submission != "sending" {
 			return nil
+		}
+		if detailed, ok := a.cachedJobDetails(job.URL); ok {
+			e.Job = detailed
 		}
 		e.UpdatedAt = time.Now()
 		e.Error = ""
@@ -225,11 +253,31 @@ func (a *AIOrchestrator) drainManualQueue() error {
 			evaluation, evalErr := a.evaluateJobForTaskWithAnalysis(e.Job, e.Task)
 			err = store.Update(func(st *workflow.State) error {
 				item := st.Entries[e.ID]
+				if detailed, ok := a.cachedJobDetails(e.Job.URL); ok {
+					item.Job = detailed
+				}
+				defer func() {
+					if item.Job.RequiresManualApplication() {
+						if item.Job.ApplicationMode == "questionnaire" {
+							item.Status = "questionnaire"
+							item.Stage = "Анкета работодателя — требуется заполнение"
+						} else {
+							item.Status = "unreadable"
+							item.Stage = "Не удалось прочитать описание"
+						}
+					}
+				}()
 				item.UpdatedAt = time.Now()
 				item.Error = ""
 				if evalErr != nil {
+					if item.Job.DescriptionStatus == "" {
+						item.Job.DescriptionStatus = "unreadable"
+					}
 					item.Status = "error"
 					item.Stage = "Ошибка повторной оценки"
+					item.Score = 0
+					item.Reason = ""
+					item.ReviewPoints = nil
 					item.Error = evalErr.Error()
 					return nil
 				}
@@ -271,6 +319,9 @@ func (a *AIOrchestrator) drainManualQueue() error {
 			}
 			err = store.Update(func(st *workflow.State) error {
 				item := st.Entries[e.ID]
+				if detailed, ok := a.cachedJobDetails(e.Job.URL); ok {
+					item.Job = detailed
+				}
 				item.UpdatedAt = time.Now()
 				if draftErr != nil {
 					item.Status = "draft_error"

@@ -40,6 +40,7 @@ type applicationOperations struct {
 	evaluate     func(types.Job) (*JobEvaluationResult, error)
 	submit       func(types.Job) (string, error)
 	progress     func(int, int)
+	canAutoApply func(types.Job) bool
 	applyByScore bool
 }
 
@@ -139,6 +140,11 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 				summary.Scanned++
 				evaluation, err := ops.evaluate(job)
 				if err != nil {
+					if errors.Is(err, errUnreadableDescription) {
+						summary.Skipped++
+						consecutiveEvaluationErrors = 0
+						continue
+					}
 					summary.Failures++
 					consecutiveEvaluationErrors++
 					summary.Results = append(summary.Results, fmt.Sprintf("❌ %s: ошибка оценки", job.Title))
@@ -150,6 +156,11 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 				}
 				consecutiveEvaluationErrors = 0
 				summary.Evaluated++
+				if ops.canAutoApply != nil && !ops.canAutoApply(job) {
+					summary.Skipped++
+					log.Printf("ℹ️ %s: требуется анкета работодателя; продолжаю поиск", job.Title)
+					continue
+				}
 				if evaluation != nil {
 					logEvaluationResult(evaluation)
 					if evaluation.MatchScore >= minimumScore {
@@ -231,8 +242,14 @@ func (a *AIOrchestrator) applyUntilTarget(queries []string) (string, error) {
 	evaluatedIndex := 0
 	summary, err := runApplicationTarget(target, queries, applicationOperations{
 		applyByScore: a.applyByScore,
-		checkpoint:   a.drainManualQueue,
-		totalSent:    a.workflowTotalCounter(),
+		canAutoApply: func(job types.Job) bool {
+			if detailed, ok := a.cachedJobDetails(job.URL); ok {
+				job = detailed
+			}
+			return !job.RequiresManualApplication()
+		},
+		checkpoint: a.drainManualQueue,
+		totalSent:  a.workflowTotalCounter(),
 		search: func(query string, page int) ([]types.Job, error) {
 			log.Printf("🔍 Ищу вакансии: %s, страница %d", query, page+1)
 			if _, err := a.searchJobsPage(query, page); err != nil {

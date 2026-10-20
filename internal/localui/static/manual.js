@@ -43,6 +43,13 @@ function renderManualActions(card, container) {
   const b=document.createElement('button');b.type='button';b.className='button button-secondary';b.textContent=label;
   b.addEventListener('click',async()=>{b.disabled=true;try{await fn();await refreshState();}catch(error){showActivityMessage(error.message,true);b.disabled=false;}});actions.append(b);
  }
+ if(card.applicationUrl) {
+  const url=new URL(card.applicationUrl,location.origin);
+  if(url.protocol==='https:' && (url.hostname==='hh.ru'||url.hostname.endsWith('.hh.ru'))) {
+   const link=document.createElement('a');link.className='button button-secondary';link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';
+   link.textContent=card.status==='questionnaire'?'Открыть анкету':'Открыть вакансию';actions.append(link);
+  }
+ }
  if(card.canDraft||card.canSend) {
   button(card.canSend?'Просмотреть письмо':'Откликнуться',async()=>{
    if(!card.canSend) await vacancyAction(card.id,'draft');
