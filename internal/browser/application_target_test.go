@@ -276,3 +276,67 @@ func TestBlockerJSONIsStrict(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestTargetContinuesAfterLetterFailureBeforeSubmission(t *testing.T) {
+	calls, progress := 0, 0
+	summary, err := runApplicationTarget(2, []string{"ML"}, applicationOperations{
+		search: func(_ string, page int) ([]types.Job, error) {
+			if page == 0 {
+				return []types.Job{targetJob(1), targetJob(2), targetJob(3), targetJob(4)}, nil
+			}
+			return nil, nil
+		},
+		evaluate: relevantJob,
+		submit: func(job types.Job) (string, error) {
+			calls++
+			if job.URL == targetJob(1).URL {
+				return "", fmt.Errorf("wrapped: %w", &ApplicationFailure{Err: errors.New("письмо не прошло проверку")})
+			}
+			return "подтверждён", nil
+		},
+		progress: func(sent, target int) { progress = sent },
+	})
+	if err != nil || summary.Sent != 2 || summary.Failures != 1 || summary.Scanned != 3 || calls != 3 || progress != 2 {
+		t.Fatal(summary, calls, progress, err)
+	}
+	if !strings.Contains(summary.Results[0], "письмо не прошло проверку") {
+		t.Fatal("preparation error was not recorded", summary.Results)
+	}
+}
+
+func TestOnlyPreSubmissionFailuresReportShortfallWithoutFatalError(t *testing.T) {
+	calls := 0
+	summary, err := runApplicationTarget(2, []string{"ML"}, applicationOperations{
+		search: func(_ string, page int) ([]types.Job, error) {
+			if page == 0 {
+				return []types.Job{targetJob(1), targetJob(2)}, nil
+			}
+			return nil, nil
+		},
+		evaluate: relevantJob,
+		submit: func(types.Job) (string, error) {
+			calls++
+			return "", &ApplicationFailure{Err: errors.New("модель не вернула письмо")}
+		},
+	})
+	if err != nil || summary.Sent != 0 || summary.Failures != 2 || calls != 2 || !strings.Contains(summary.String(), "Недобор: 2") {
+		t.Fatal(summary, calls, err)
+	}
+}
+
+func TestUncertainClickStillStopsAfterEarlierPreparationFailure(t *testing.T) {
+	calls := 0
+	summary, err := runApplicationTarget(2, []string{"ML"}, applicationOperations{
+		search: func(string, int) ([]types.Job, error) {
+			return []types.Job{targetJob(1), targetJob(2), targetJob(3)}, nil
+		},
+		evaluate: relevantJob,
+		submit: func(types.Job) (string, error) {
+			calls++
+			return "", &ApplicationFailure{Err: errors.New("сбой"), Uncertain: calls == 2}
+		},
+	})
+	if err == nil || calls != 2 || summary.Sent != 0 || summary.Failures != 2 || !strings.Contains(summary.Reason, "не подтверждён") {
+		t.Fatal(summary, calls, err)
+	}
+}

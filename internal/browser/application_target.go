@@ -172,8 +172,13 @@ func runApplicationTarget(target int, queries []string, ops applicationOperation
 				if err != nil {
 					summary.Failures++
 					log.Printf("❌ Ошибка отклика: %v", err)
-					summary.Reason = "Отправка остановлена: результат последнего отклика не подтверждён. Проверьте «Мои отклики» на hh.ru перед повторным запуском."
 					summary.Results = append(summary.Results, fmt.Sprintf("❌ %s: %v", job.Title, err))
+					var failure *ApplicationFailure
+					if errors.As(err, &failure) && !failure.Sent && !failure.Uncertain {
+						log.Println("⏭️ Отклик не отправлялся: сохраняю ошибку карточки и продолжаю поиск")
+						continue
+					}
+					summary.Reason = "Отправка остановлена: результат последнего отклика не подтверждён. Проверьте «Мои отклики» на hh.ru перед повторным запуском."
 					return summary, err
 				}
 				summary.Sent++

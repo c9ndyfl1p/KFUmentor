@@ -839,9 +839,11 @@ function showActivityMessage(message = "", isError = false) {
 function renderVacancyCards(cards, running, minimumScore = 0) {
   vacancyCards.replaceChildren();
   const matchingCards = cards.filter((item) => {
+    // Outcome and problem cards must not disappear when the score filter changes.
+    if (item.submission || ["error", "success", "warning", "stopped", "running", "applying", "queued", "ready"].includes(item.status)) return true;
     const score = Number(item.score || 0);
     if (score > 0) return score >= minimumScore;
-    return running && ["running", "queued"].includes(item.status);
+    return false;
   });
   if (!matchingCards.length) {
     const empty = document.createElement("p");

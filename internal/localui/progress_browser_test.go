@@ -19,6 +19,12 @@ func TestProgressBrowser(t *testing.T) {
 		{Index: 2, Title: "Низкая оценка", Score: 3, Status: "skipped"},
 		{Index: 3, Title: "Ошибка модели", Status: "error", Details: "Нет ответа"},
 		{Index: 4, Title: "В работе", Status: "running"},
+		{Index: 5, Title: "Отправлено ниже порога", Score: 3, Status: "success", Submission: "sent"},
+		{Index: 6, Title: "Без письма ниже порога", Score: 2, Status: "warning", Submission: "without_letter"},
+		{Index: 7, Title: "Ошибка письма ниже порога", Score: 4, Status: "error", Details: "Письмо не подготовлено"},
+		{Index: 8, Title: "Результат неизвестен", Status: "error", Submission: "uncertain"},
+		{Index: 9, Title: "Отклик уже существует", Score: 1, Status: "skipped", Submission: "already"},
+		{Index: 10, Title: "Сохранённый черновик ниже порога", Score: 3, Status: "ready"},
 	}}}
 	actions := make(chan string, 4)
 	mux := http.NewServeMux()
@@ -100,7 +106,7 @@ func TestProgressBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"Ручная проверка", "Ошибка модели", "В работе"} {
+	for _, expected := range []string{"Ручная проверка", "Ошибка модели", "В работе", "Отправлено ниже порога", "Без письма ниже порога", "Ошибка письма ниже порога", "Результат неизвестен", "Отклик уже существует", "Сохранённый черновик ниже порога"} {
 		if !strings.Contains(text, expected) {
 			t.Fatal("missing card", expected, text)
 		}
