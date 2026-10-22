@@ -1097,8 +1097,11 @@ func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 		if nextCandidate >= len(candidates) {
 			continue
 		}
-		batch := make([]types.Job, 0, evaluationWorkers)
-		for nextCandidate < len(candidates) && len(batch) < evaluationWorkers && analyzedCount+len(batch) < scanBudget {
+		// Every job in a batch may qualify. Avoid starting assessments (and
+		// persisting extra cards) beyond the remaining number of matches.
+		batchLimit := min(evaluationWorkers, target-qualifiedCount)
+		batch := make([]types.Job, 0, batchLimit)
+		for nextCandidate < len(candidates) && len(batch) < batchLimit && analyzedCount+len(batch) < scanBudget {
 			job := candidates[nextCandidate]
 			nextCandidate++
 			if isRealVacancyURL(job.URL) {
