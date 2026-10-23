@@ -1008,6 +1008,15 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 	return &result, nil
 }
 
+// EvaluateCollectedJob applies the hh evaluation rules to a vacancy whose
+// description has already been collected from another public job board.
+func EvaluateCollectedJob(modelURL, modelName string, profile types.Resume, job types.Job, task string) (*JobEvaluationResult, error) {
+	a := &AIOrchestrator{llmClient: llm.NewOllamaClient(modelURL, modelName), resume: profile, jobDetails: map[string]types.Job{}}
+	job.DescriptionStatus = "ready"
+	a.cacheJobDetails(job.URL, job)
+	return a.evaluateJobForTaskWithAnalysis(job, task)
+}
+
 func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {
 	target := a.vacancyLimit
 	if target < 1 {

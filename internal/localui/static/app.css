@@ -803,6 +803,11 @@ h1, .overview-heading h1, .search-card h1, .profile-card h1 { color: #21352c; fo
 .resume-match-panel .button { min-height: 40px; flex: 0 0 auto; padding-inline: 13px; }
 .resume-match-panel .button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 .search-filters { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 18px; }
+.source-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin: 18px 0 0; padding: 14px; border: 1px solid #e7e5dc; border-radius: 9px; }
+.source-picker legend { padding: 0 4px; }
+.source-picker label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.source-picker input { accent-color: #225743; }
+.source-picker small { flex-basis: 100%; }
 .search-filter { position: relative; min-width: 0; }
 .search-filter .field-label { margin: 0 0 6px; color: #77847a; font-size: 9px; letter-spacing: .1em; }
 .search-filter input:not([type="checkbox"]):not([type="hidden"]) { min-height: 45px; padding-inline: 13px; background: #f8f7f2; border-color: #e7e5dc; border-radius: 9px; }

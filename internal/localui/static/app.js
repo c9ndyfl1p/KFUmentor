@@ -1196,7 +1196,9 @@ $("#auto-apply").addEventListener("change", (event) => {
 });
 
 async function launchSearch(task, profileMatch = false) {
-  if (cityField.value.trim() && !areaIDField.value) {
+  const hh = $("#source-hh").checked, habr = $("#source-habr").checked;
+  if (!hh && !habr) { $("#source-hint").textContent = "Выберите хотя бы один сайт."; return; }
+  if (hh && cityField.value.trim() && !areaIDField.value) {
     cityHint.textContent = "Выберите город из подсказок или очистите поле.";
     cityHint.classList.add("is-error");
     cityField.focus();
@@ -1207,7 +1209,9 @@ async function launchSearch(task, profileMatch = false) {
   const label = runButton.querySelector("span");
   label.textContent = "Запускаю…";
   try {
-    await request("/api/run", {
+    const limit = Number($("#vacancy-limit").value);
+    const starts = [];
+    if (hh) starts.push(request("/api/run", {
       method: "POST",
       body: JSON.stringify({
         task,
@@ -1216,22 +1220,25 @@ async function launchSearch(task, profileMatch = false) {
         autoApply: !profileMatch && $("#auto-apply").checked,
  applyByScore: !$("#application-policy").checked,
         applicationTarget: !profileMatch && $("#auto-apply").checked ? Number($("#application-target").value) : 0,
-        vacancyLimit: Number($("#vacancy-limit").value),
+        vacancyLimit: limit,
         minimumScore: Number($("#minimum-score").value),
         visible: $("#visible-browser").checked,
       }),
-    });
-    showActivityMessage("");
+    }));
+    if (habr) starts.push(window.startHabrSearch(task, limit));
+    const results = await Promise.allSettled(starts);
+    const failures = results.filter(result => result.status === "rejected").map(result => result.reason.message);
+    showActivityMessage(failures.join("; "), failures.length > 0);
     await refreshState();
   } catch (error) {
     showActivityMessage(error.message, true);
   } finally {
     const state = await request("/api/state").catch(() => ({ running: false }));
-    runButton.disabled = state.running;
-    matchResumeButton.disabled = state.running;
+    runButton.disabled = state.running || window.habrRunning;
+    matchResumeButton.disabled = state.running || window.habrRunning;
     loginButton.disabled = state.running;
     deepseekLoginButton.disabled = state.running;
-    label.textContent = state.running ? "Выполняется…" : "Начать поиск";
+    label.textContent = state.running || window.habrRunning ? "Выполняется…" : "Начать поиск";
   }
 }
 
@@ -1239,6 +1246,16 @@ taskForm.addEventListener("submit", (event) => {
   event.preventDefault();
   launchSearch($("#task").value);
 });
+
+for (const id of ["source-hh", "source-habr"]) {
+  const field = $("#" + id);
+  field.checked = localStorage.getItem(id) === null ? id === "source-hh" : localStorage.getItem(id) === "true";
+  field.addEventListener("change", () => {
+    if (!$("#source-hh").checked && !$("#source-habr").checked) field.checked = true;
+    localStorage.setItem(id, String(field.checked));
+    $("#source-hint").textContent = "Можно выбрать оба сайта. Лимит применяется к каждому отдельно.";
+  });
+}
 
 matchResumeButton.addEventListener("click", () => {
   const profile = savedProfileSnapshot || {};
@@ -1295,7 +1312,7 @@ stopButton.addEventListener("click", async () => {
   stopButton.disabled = true;
   stopButton.textContent = "Останавливаю…";
   try {
-    await request("/api/cancel", { method: "POST" });
+    await Promise.allSettled([request("/api/cancel", { method: "POST" }), window.stopHabrSearch()]);
     await refreshState();
   } catch (error) {
     showActivityMessage(error.message, true);
@@ -1316,12 +1333,13 @@ async function refreshState() {
   statusChip.classList.toggle("is-running", Boolean(state.running));
   statusChip.classList.toggle("is-done", !state.running && state.status === "Поиск завершён");
   statusChip.classList.toggle("is-error", !state.running && /ошибк|не удалось/i.test(state.status || ""));
-  runButton.disabled = Boolean(state.running);
-  matchResumeButton.disabled = Boolean(state.running);
-  runButton.querySelector("span").textContent = state.running ? "Выполняется…" : "Начать поиск";
+  const searchRunning = Boolean(state.running || window.habrRunning);
+  runButton.disabled = searchRunning;
+  matchResumeButton.disabled = searchRunning;
+  runButton.querySelector("span").textContent = searchRunning ? "Выполняется…" : "Начать поиск";
   loginButton.disabled = Boolean(state.running);
   deepseekLoginButton.disabled = Boolean(state.running);
-  stopButton.hidden = !state.running;
+  stopButton.hidden = !searchRunning;
   stopButton.disabled = /останавливаю/i.test(state.status || "");
   stopButton.textContent = stopButton.disabled ? "Останавливаю…" : "Остановить";
 

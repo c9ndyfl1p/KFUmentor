@@ -88,3 +88,7 @@ func fallbackSearchQueries(task string) []string {
 	}
 	return []string{query}
 }
+
+// SearchTermsForTask gives collectors outside the hh browser the same local
+// interpretation of a natural-language search request.
+func SearchTermsForTask(task string) []string { return fallbackSearchQueries(task) }

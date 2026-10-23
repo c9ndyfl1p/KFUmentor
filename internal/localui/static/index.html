@@ -101,6 +101,7 @@
               <form id="run-form">
                 <label class="visually-hidden" for="task">Опишите работу, которую ищете</label>
                 <textarea class="search-query" id="task" name="task" rows="1" maxlength="2000" placeholder="Например: бизнес-аналитик или продуктовый аналитик…" required></textarea>
+                <fieldset class="source-picker"><legend class="field-label">Где искать вакансии</legend><label><input id="source-hh" type="checkbox" checked> hh.ru</label><label><input id="source-habr" type="checkbox"> Хабр Карьера</label><small id="source-hint" class="city-hint">Можно выбрать оба сайта. Лимит применяется к каждому отдельно.</small></fieldset>
                 <div class="resume-match-panel">
                   <div class="resume-match-copy"><strong>Подобрать вакансии по резюме</strong><small>ИИ учтёт ваш опыт, проекты и навыки. Отклики останутся на ваше решение.</small></div>
                   <button class="button button-secondary" id="match-resume-button" type="button" aria-describedby="resume-match-hint">
@@ -132,7 +133,7 @@
  <small id="application-policy-description" class="city-hint"></small>
  </div>
  <div class="limits-grid">
-                      <div class="limit-field"><label class="field-label" for="vacancy-limit">Лимит вакансий</label><input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint"><small id="vacancy-limit-hint" class="city-hint">Подтверждённых по оценке вакансий</small></div>
+                      <div class="limit-field"><label class="field-label" for="vacancy-limit">Лимит вакансий на каждом сайте</label><input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint"><small id="vacancy-limit-hint" class="city-hint">hh.ru — вакансии по порогу; Хабр — собранные вакансии</small></div>
                       <div class="limit-field"><label class="field-label" for="application-target">Цель по откликам</label><input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint"><small id="application-target-hint" class="city-hint">Доступно при включённых откликах</small></div>
                       <div class="limit-field"><label class="field-label" for="minimum-score">Минимальная оценка соответствия</label><input id="minimum-score" name="minimumScore" type="number" min="0" max="10" step="1" value="7" required aria-describedby="minimum-score-hint"><small id="minimum-score-hint" class="city-hint">Ниже порога вакансия пропускается</small></div>
                     </div>
@@ -153,24 +154,16 @@
         </section>
 
         <section class="card" data-view="search" aria-labelledby="habr-title" style="padding:24px">
-          <h2 id="habr-title">Хабр Карьера · Сбор вакансий</h2>
-          <p>Вставьте ссылку на поиск с фильтрами или на отдельную вакансию. Собираем описания без оценки моделью. Новый сбор заменяет предыдущую подборку.</p>
-          <form id="habr-form">
-            <label for="habr-url">Ссылка Хабр Карьеры</label>
-            <input id="habr-url" type="url" required value="https://career.habr.com/vacancies" style="width:100%">
-            <label for="habr-limit">Сколько вакансий собрать</label>
-            <input id="habr-limit" type="number" min="1" max="100" value="10" required>
-            <button id="habr-start" class="button button-primary" type="submit">Собрать вакансии</button>
-            <button id="habr-stop" class="button button-secondary" type="button" hidden>Остановить сбор</button>
-          </form>
+          <h2 id="habr-title">Вакансии Хабр Карьеры</h2>
+          <p>Результаты поиска по общей строке. Отклики на Хабре пока не отправляются.</p>
           <p id="habr-status" role="status" aria-live="polite"></p>
-          <div id="habr-cards"></div>
+          <div id="habr-cards" class="vacancy-cards"></div>
         </section>
 
         <section class="card activity-card" id="activity-section" data-view="search" aria-labelledby="activity-title">
           <div class="card-heading activity-heading">
             <div class="activity-title-wrap">
-              <h2 id="activity-title">Ход поиска</h2>
+              <h2 id="activity-title">Вакансии hh.ru · Ход поиска</h2>
               <p id="activity-caption">Здесь появится статус и результат последнего запуска</p>
             </div>
             <button type="button" class="text-button" id="clear-log">Очистить</button>

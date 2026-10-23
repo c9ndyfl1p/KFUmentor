@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/mihnpro/Ai_agent_2/internal/browser"
 	"github.com/mihnpro/Ai_agent_2/internal/habr"
+	"github.com/mihnpro/Ai_agent_2/internal/types"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -88,13 +92,27 @@ func (s *server) handleHabr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		URL   string `json:"url"`
-		Limit int    `json:"limit"`
+		URL          string `json:"url"`
+		Task         string `json:"task"`
+		Limit        int    `json:"limit"`
+		MinimumScore int    `json:"minimumScore"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, 400, err.Error())
 		return
+	}
+	if strings.TrimSpace(input.Task) != "" {
+		if len([]rune(input.Task)) > 2000 {
+			writeError(w, 400, "Слишком длинный запрос")
+			return
+		}
+		queries := browser.SearchTermsForTask(input.Task)
+		if len(queries) == 0 {
+			writeError(w, 400, "Уточните профессию или навыки для поиска на Хабре")
+			return
+		}
+		input.URL = "https://career.habr.com/vacancies?q=" + url.QueryEscape(queries[0])
 	}
 	u, err := habr.ValidateURL(input.URL)
 	if err != nil {
@@ -104,6 +122,19 @@ func (s *server) handleHabr(w http.ResponseWriter, r *http.Request) {
 	if input.Limit < 1 || input.Limit > 100 {
 		writeError(w, 400, "Количество вакансий: от 1 до 100")
 		return
+	}
+	if input.MinimumScore < 0 || input.MinimumScore > 10 {
+		writeError(w, 400, "Порог оценки: от 0 до 10")
+		return
+	}
+	var profile types.Resume
+	if strings.TrimSpace(input.Task) != "" {
+		var profileErr error
+		profile, profileErr = s.readProfile()
+		if profileErr != nil {
+			writeError(w, 500, "Не удалось прочитать профиль")
+			return
+		}
 	}
 	previous := h.state
 	h.state = habrState{Running: true, URL: u.String(), Limit: input.Limit, Status: "Собираю вакансии…", Jobs: []habr.Job{}}
@@ -118,6 +149,15 @@ func (s *server) handleHabr(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		var saveErr error
 		err := habr.Collect(ctx, u.String(), input.Limit, func(j habr.Job) {
+			if strings.TrimSpace(input.Task) != "" && j.Error == "" {
+				job := types.Job{URL: j.URL, Title: j.Title, Company: j.Company, Salary: j.Salary, Snippet: j.Description, DescriptionStatus: "ready"}
+				evaluation, evalErr := browser.EvaluateCollectedJob(s.cfg.ModelURL, s.cfg.ModelName, profile, job, input.Task)
+				if evalErr != nil {
+					j.Error = "Оценка не выполнена: " + evalErr.Error()
+				} else {
+					j.Score, j.Recommendation, j.Reason = evaluation.MatchScore, evaluation.Recommendation, evaluation.Reason
+				}
+			}
 			h.mu.Lock()
 			defer h.mu.Unlock()
 			h.state.Jobs = append(h.state.Jobs, j)
