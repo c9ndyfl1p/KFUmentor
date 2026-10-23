@@ -102,6 +102,7 @@ type vacancyCard struct {
 }
 
 type server struct {
+	habr            habrService
 	history         *workflow.Store
 	runID           string
 	dispatchMu      sync.Mutex
@@ -152,6 +153,9 @@ func Start(cfg types.Config, address string) error {
 	mux.HandleFunc("POST /api/mentor/exercise", app.handleMentorExercise)
 	mux.HandleFunc("POST /api/mentor/exercise/review", app.handleMentorExerciseReview)
 	mux.HandleFunc("POST /api/mentor/interview", app.handleMentorInterview)
+	mux.HandleFunc("GET /api/habr", app.handleHabr)
+	mux.HandleFunc("POST /api/habr", app.handleHabr)
+	mux.HandleFunc("DELETE /api/habr", app.handleHabr)
 	mux.HandleFunc("GET /api/state", app.handleState)
 	mux.HandleFunc("POST /api/vacancy/action", app.handleVacancyAction)
 	mux.HandleFunc("GET /api/deepseek/status", app.handleDeepSeekStatus)

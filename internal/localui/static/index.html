@@ -9,6 +9,7 @@
   <script src="/static/app.js" defer></script>
  <script src="/static/manual.js" defer></script>
 <script src="/static/resume.js" defer></script>
+<script src="/static/habr.js" defer></script>
 </head>
 <body>
   <dialog id="captcha-dialog" class="captcha-dialog" aria-labelledby="captcha-title" aria-describedby="captcha-description">
@@ -149,6 +150,21 @@
               </form>
             </div>
           </div>
+        </section>
+
+        <section class="card" data-view="search" aria-labelledby="habr-title" style="padding:24px">
+          <h2 id="habr-title">Хабр Карьера · Сбор вакансий</h2>
+          <p>Вставьте ссылку на поиск с фильтрами или на отдельную вакансию. Собираем описания без оценки моделью. Новый сбор заменяет предыдущую подборку.</p>
+          <form id="habr-form">
+            <label for="habr-url">Ссылка Хабр Карьеры</label>
+            <input id="habr-url" type="url" required value="https://career.habr.com/vacancies" style="width:100%">
+            <label for="habr-limit">Сколько вакансий собрать</label>
+            <input id="habr-limit" type="number" min="1" max="100" value="10" required>
+            <button id="habr-start" class="button button-primary" type="submit">Собрать вакансии</button>
+            <button id="habr-stop" class="button button-secondary" type="button" hidden>Остановить сбор</button>
+          </form>
+          <p id="habr-status" role="status" aria-live="polite"></p>
+          <div id="habr-cards"></div>
         </section>
 
         <section class="card activity-card" id="activity-section" data-view="search" aria-labelledby="activity-title">
