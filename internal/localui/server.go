@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mihnpro/Ai_agent_2/internal/contentcheck"
 	"github.com/mihnpro/Ai_agent_2/internal/llm"
 	"github.com/mihnpro/Ai_agent_2/internal/types"
 	"github.com/mihnpro/Ai_agent_2/internal/workflow"
@@ -102,6 +103,8 @@ type vacancyCard struct {
 }
 
 type server struct {
+	moderationOnce  sync.Once
+	moderation      *contentcheck.Checker
 	habr            habrService
 	history         *workflow.Store
 	runID           string
@@ -387,7 +390,7 @@ func (s *server) handleSaveProfile(w http.ResponseWriter, r *http.Request) {
 		resume.ContactInfo = current.ContactInfo
 	}
 
-	if err := saveProfile(resume); err != nil {
+	if err := s.saveCheckedProfile(r.Context(), resume); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

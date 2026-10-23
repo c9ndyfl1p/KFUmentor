@@ -418,11 +418,11 @@
         <span class="upload-cloud" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         <strong>Перетащите файл сюда</strong>
         <span>или нажмите, чтобы выбрать на компьютере</span>
-        <span class="resume-format">PDF с текстом, Word DOCX, JSON · до 10 МБ</span>
+        <span class="resume-format">Резюме без фото: PDF с текстом, Word DOCX, JSON · до 10 МБ</span>
         <input id="resume-file" name="resume" type="file" accept=".pdf,.docx,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/json" required>
       </label>
       <p id="resume-file-name" class="resume-file-name" aria-live="polite">Файл не выбран</p>
-      <p class="resume-local-note">Резюме разбирает выбранная AI-модель. Если модель облачная, текст передаётся её провайдеру. PDF-сканы и старый формат DOC пока не поддерживаются.</p>
+      <p class="resume-local-note">Принимаются только резюме без фото, изображений и вложений. Содержание файла и изменения профиля проверяет выбранная AI-модель; при отказе или сбое проверки сохранение блокируется. Если модель облачная, текст передаётся её провайдеру. PDF-сканы и старый формат DOC не поддерживаются.</p>
       </div>
       <section id="resume-preview" hidden aria-label="Проверка данных резюме">
         <p class="resume-review-note">Проверьте данные перед сохранением. Текущий профиль пока не изменён.</p>
@@ -443,7 +443,7 @@
 <dialog id="application-dialog" class="resume-dialog" aria-labelledby="application-title">
  <div class="resume-dialog-content"><button id="application-close" class="dialog-close" type="button" aria-label="Закрыть">×</button>
  <h2 id="application-title">Сопроводительное письмо</h2>
- <p id="application-stage" role="status"></p><pre id="application-letter" class="application-letter"></pre>
+ <p id="application-stage" role="status"></p><p class="hint">Перед отправкой содержание письма проходит обязательную проверку. При отказе или недоступности модели отклик не отправляется.</p><pre id="application-letter" class="application-letter"></pre>
  <p>Нажатие «Отправить» разрешает один отклик от вашего аккаунта hh.ru с этим письмом. При изменении профиля письмо нужно подготовить заново.</p>
  <button id="application-send" class="button button-primary" type="button" disabled>Отправить</button></div>
  </dialog>

@@ -66,6 +66,12 @@ func extractPDF(data []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("не удалось открыть PDF; проверьте файл и снимите пароль")
 	}
+	root := r.Trailer().Key("Root")
+	for _, key := range []string{"OpenAction", "AA", "AcroForm", "Names", "AF", "Collection", "OCProperties"} {
+		if !root.Key(key).IsNull() {
+			return "", fmt.Errorf("PDF содержит дополнительные объекты, которые нельзя полностью проверить; загрузите простое текстовое резюме без фото, форм и вложений")
+		}
+	}
 	if r.NumPage() > 20 {
 		return "", fmt.Errorf("поддерживаются резюме до 20 страниц")
 	}
@@ -73,6 +79,31 @@ func extractPDF(data []byte) (string, error) {
 	var text strings.Builder
 	for i := 1; i <= r.NumPage(); i++ {
 		page := r.Page(i)
+		if len(page.Resources().Key("XObject").Keys()) > 0 {
+			return "", fmt.Errorf("PDF содержит изображение или встроенный графический объект; загрузите текстовое резюме без фото и изображений")
+		}
+		for _, key := range []string{"AA", "AF", "PieceInfo"} {
+			if !page.V.Key(key).IsNull() {
+				return "", fmt.Errorf("PDF содержит непроверяемые дополнительные объекты; загрузите текстовое резюме без вложений")
+			}
+		}
+		annotations := page.V.Key("Annots")
+		for j := 0; j < annotations.Len(); j++ {
+			annotation := annotations.Index(j)
+			if annotation.Key("Subtype").Name() != "Link" || !annotation.Key("AA").IsNull() {
+				return "", fmt.Errorf("PDF содержит аннотации или формы; загрузите текстовое резюме без дополнительных объектов")
+			}
+			action := annotation.Key("A")
+			if !action.IsNull() {
+				if action.Key("S").Name() != "URI" {
+					return "", fmt.Errorf("PDF содержит непроверяемое действие ссылки")
+				}
+				text.WriteString("\nСсылка в резюме: " + action.Key("URI").Text() + "\n")
+			}
+		}
+		if err := checkPDFOperators(page); err != nil {
+			return "", err
+		}
 		part, err := pdfPageText(page)
 		if err != nil {
 			return "", fmt.Errorf("не удалось прочитать страницу %d PDF: %w", i, err)
@@ -146,12 +177,29 @@ func extractDOCX(data []byte) (string, error) {
 	}
 	parts := map[string]*zip.File{}
 	var expanded uint64
+	if len(r.File) > 200 {
+		return "", fmt.Errorf("слишком сложный DOCX; сохраните простое резюме без вложений")
+	}
+	var links strings.Builder
 	for _, f := range r.File {
+		if f.UncompressedSize64 > maxXMLBytes || expanded+f.UncompressedSize64 > maxXMLBytes {
+			return "", fmt.Errorf("слишком большой распакованный DOCX")
+		}
+		expanded += f.UncompressedSize64
+		if strings.HasSuffix(f.Name, ".rels") {
+			part, err := docxLinks(f)
+			if err != nil {
+				return "", err
+			}
+			links.WriteString(part)
+		}
+		if !safeDOCXPart(f.Name) {
+			return "", fmt.Errorf("DOCX содержит изображения или непроверяемые вложения/разделы; загрузите резюме без фото, изображений, комментариев и вложений")
+		}
 		if f.Name == "word/document.xml" || regexp.MustCompile(`^word/(header|footer)\d+\.xml$`).MatchString(f.Name) {
 			if f.UncompressedSize64 > maxXMLBytes {
 				return "", fmt.Errorf("слишком большой текстовый раздел DOCX")
 			}
-			expanded += f.UncompressedSize64
 			if expanded > maxXMLBytes {
 				return "", fmt.Errorf("слишком большой текстовый раздел DOCX")
 			}
@@ -181,6 +229,7 @@ func extractDOCX(data []byte) (string, error) {
 		return "", err
 	}
 	text.WriteString(part)
+	text.WriteString(links.String())
 	for _, f := range r.File {
 		if !strings.HasPrefix(f.Name, "word/footer") || parts[f.Name] == nil {
 			continue
@@ -202,7 +251,6 @@ func readXMLPart(f *zip.File) (string, error) {
 	defer r.Close()
 	decoder := xml.NewDecoder(io.LimitReader(r, maxXMLBytes+1))
 	var text strings.Builder
-	deleted := 0
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -213,11 +261,9 @@ func readXMLPart(f *zip.File) (string, error) {
 		}
 		switch element := token.(type) {
 		case xml.StartElement:
-			if element.Name.Local == "del" {
-				deleted++
-			}
-			if deleted > 0 {
-				continue
+			switch element.Name.Local {
+			case "del", "ins", "altChunk", "object", "drawing", "pict", "instrText", "fldSimple", "txbxContent":
+				return "", fmt.Errorf("DOCX содержит исправления, поля или встроенные объекты; примите исправления и загрузите простое текстовое резюме без фото")
 			}
 			switch element.Name.Local {
 			case "t":
@@ -232,13 +278,84 @@ func readXMLPart(f *zip.File) (string, error) {
 				text.WriteString("\n")
 			}
 		case xml.EndElement:
-			if element.Name.Local == "del" {
-				deleted--
-			}
-			if deleted == 0 && (element.Name.Local == "p" || element.Name.Local == "tr") {
+			if element.Name.Local == "p" || element.Name.Local == "tr" {
 				text.WriteString("\n")
 			}
 		}
 	}
 	return text.String(), nil
+}
+
+// A small, explicit package subset prevents text extraction from silently
+// dropping images, macros, attached documents, comments and additional stories.
+func safeDOCXPart(name string) bool {
+	switch name {
+	case "[Content_Types].xml", "_rels/.rels", "docProps/core.xml", "docProps/app.xml",
+		"word/document.xml", "word/styles.xml", "word/stylesWithEffects.xml", "word/settings.xml", "word/webSettings.xml", "word/fontTable.xml", "word/numbering.xml":
+		return true
+	}
+	return regexp.MustCompile(`^word/(header[0-9]+\.xml|footer[0-9]+\.xml|theme/theme[0-9]+\.xml|_rels/(document|header[0-9]+|footer[0-9]+|fontTable)\.xml\.rels)$`).MatchString(name)
+}
+
+func docxLinks(f *zip.File) (string, error) {
+	r, err := f.Open()
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	decoder := xml.NewDecoder(io.LimitReader(r, maxXMLBytes+1))
+	var text strings.Builder
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("повреждённые связи DOCX")
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok || start.Name.Local != "Relationship" {
+			continue
+		}
+		var target, mode, kind string
+		for _, attr := range start.Attr {
+			switch attr.Name.Local {
+			case "Target":
+				target = attr.Value
+			case "TargetMode":
+				mode = attr.Value
+			case "Type":
+				kind = attr.Value
+			}
+		}
+		if mode == "External" {
+			if !strings.HasSuffix(kind, "/hyperlink") {
+				return "", fmt.Errorf("DOCX содержит внешнее изображение или связанный объект; загрузите резюме без фото и вложений")
+			}
+			text.WriteString("\nСсылка в резюме: " + target + "\n")
+		}
+	}
+	return text.String(), nil
+}
+
+func checkPDFOperators(page pdf.Page) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("PDF содержит изображение или непроверяемый поток; загрузите текстовое резюме без фото и изображений")
+		}
+	}()
+	stream := page.V.Key("Contents")
+	if stream.IsNull() {
+		return nil
+	}
+	pdf.Interpret(stream, func(stack *pdf.Stack, op string) {
+		// Inline images have no XObject entry. Stop before their binary data is parsed.
+		if op == "BI" || op == "Do" {
+			panic("unsupported image or object")
+		}
+		for stack.Len() > 0 {
+			stack.Pop()
+		}
+	})
+	return nil
 }

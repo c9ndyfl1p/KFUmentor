@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,6 +56,9 @@ func (a *AIOrchestrator) generateCoverLetter(title, company string, job types.Jo
 	if strings.TrimSpace(a.resume.Summary) == "" && len(a.resume.Skills) == 0 && len(a.resume.Experience) == 0 {
 		return "", fmt.Errorf("сначала заполните и сохраните профиль кандидата в панели")
 	}
+	if err := a.contentChecker().CheckProfile(context.Background(), a.resume); err != nil {
+		return "", err
+	}
 	detailed, err := a.loadJobDetails(job)
 	if err != nil {
 		return "", err
@@ -95,6 +99,9 @@ func (a *AIOrchestrator) generateCoverLetter(title, company string, job types.Jo
 			return "", &letterCheckFailure{Err: err}
 		}
 		if review.Supported != nil && *review.Supported && len(review.UnsupportedClaims) == 0 {
+			if err := a.checkOutgoingContent(letter); err != nil {
+				return "", err
+			}
 			return letter, nil
 		}
 		unsupportedClaims = append([]string(nil), review.UnsupportedClaims...)

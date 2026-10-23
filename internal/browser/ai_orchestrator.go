@@ -1,9 +1,11 @@
 package browser
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mihnpro/Ai_agent_2/internal/contentcheck"
 	"log"
 	"net/url"
 	"os"
@@ -22,6 +24,8 @@ import (
 )
 
 type AIOrchestrator struct {
+	moderationOnce         sync.Once
+	moderation             *contentcheck.Checker
 	resumePath             string
 	approvedLetter         string
 	approvedLetterVerified bool
@@ -213,6 +217,9 @@ func (a *AIOrchestrator) ExecuteTask(task string, autoApply bool) (string, error
 	log.Printf("🤖 AI Agent processing task: %s (autoApply: %v)", task, autoApply)
 	if autoApply && (strings.TrimSpace(a.resume.Name) == "" || strings.TrimSpace(a.resume.Title) == "" || len(a.resume.Skills) == 0) {
 		return "", fmt.Errorf("автоотклики требуют заполненного профиля кандидата: укажите name, title и skills в файле резюме")
+	}
+	if err := a.contentChecker().CheckProfile(context.Background(), a.resume); err != nil {
+		return "", err
 	}
 	a.autoApply = autoApply
 	a.currentTask = task
@@ -544,6 +551,9 @@ func (a *AIOrchestrator) performJobApplication(job types.Job) (result string, re
 	}
 	if err != nil {
 		return "", fmt.Errorf("письмо не подготовлено, отклик отменён: %w", err)
+	}
+	if err := a.checkOutgoingContent(coverLetter); err != nil {
+		return "", err
 	}
 	log.Printf("✉️ Сопроводительное письмо:\n%s", coverLetter)
 
@@ -1823,4 +1833,22 @@ func visibleLetterOccurrences(page playwright.Page, letter string) int {
 		return int(count)
 	}
 	return 0
+}
+
+func (a *AIOrchestrator) contentChecker() *contentcheck.Checker {
+	a.moderationOnce.Do(func() {
+		if a.moderation == nil {
+			a.moderation = &contentcheck.Checker{}
+			if a.llmClient != nil {
+				a.moderation.Model = a.llmClient
+			}
+		}
+	})
+	return a.moderation
+}
+func (a *AIOrchestrator) checkOutgoingContent(letter string) error {
+	if err := a.contentChecker().CheckProfile(context.Background(), a.resume); err != nil {
+		return err
+	}
+	return a.contentChecker().Check(context.Background(), contentcheck.Letter, letter)
 }

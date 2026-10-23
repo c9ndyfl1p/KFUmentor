@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mihnpro/Ai_agent_2/internal/contentcheck"
 	"github.com/mihnpro/Ai_agent_2/internal/types"
 )
 
@@ -54,7 +55,11 @@ func Parse(ctx context.Context, name string, data []byte, model Model) (Preview,
 		return Preview{}, fmt.Errorf("файл пуст или превышает 10 МБ")
 	}
 	var preview Preview
+	checker := &contentcheck.Checker{Model: model}
 	if strings.EqualFold(filepath.Ext(name), ".json") {
+		if err := contentcheck.ValidateJSON(string(data)); err != nil {
+			return Preview{}, fmt.Errorf("некорректный JSON-профиль: %w", err)
+		}
 		decoder := json.NewDecoder(strings.NewReader(string(data)))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&preview.Profile); err != nil {
@@ -62,6 +67,9 @@ func Parse(ctx context.Context, name string, data []byte, model Model) (Preview,
 		}
 		if err := decoder.Decode(&struct{}{}); err != io.EOF {
 			return preview, fmt.Errorf("ожидался один JSON-профиль")
+		}
+		if err := checker.Check(ctx, contentcheck.Resume, string(data)); err != nil {
+			return Preview{}, err
 		}
 		normalizedJSON, _ := json.MarshalIndent(preview.Profile, "", "  ")
 		preview.SourceText = string(normalizedJSON)
@@ -72,6 +80,9 @@ func Parse(ctx context.Context, name string, data []byte, model Model) (Preview,
 		}
 		if model == nil {
 			return preview, fmt.Errorf("модель ИИ не настроена")
+		}
+		if err := checker.Check(ctx, contentcheck.Resume, text); err != nil {
+			return Preview{}, err
 		}
 		request, _ := json.Marshal(map[string]string{"resume_text": text})
 		response, err := model.GenerateStructured(ctx, string(request), systemPrompt, ImportSchema())
@@ -115,6 +126,9 @@ func Parse(ctx context.Context, name string, data []byte, model Model) (Preview,
 	}
 	if err := ValidateProfile(preview.Profile); err != nil {
 		return preview, err
+	}
+	if err := checker.CheckProfile(ctx, preview.Profile); err != nil {
+		return Preview{}, err
 	}
 	return preview, nil
 }

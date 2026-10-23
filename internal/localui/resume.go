@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mihnpro/Ai_agent_2/internal/contentcheck"
 	"github.com/mihnpro/Ai_agent_2/internal/llm"
 	"github.com/mihnpro/Ai_agent_2/internal/resumeimport"
 	"github.com/mihnpro/Ai_agent_2/internal/types"
@@ -43,7 +44,7 @@ func (s *server) handleUploadResume(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
 	defer cancel()
-	client := llm.NewOllamaClient(s.cfg.ModelURL, s.cfg.ModelName)
+	client := s.contentChecker().Model
 	preview, err := resumeimport.Parse(ctx, header.Filename, data, client)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
@@ -60,7 +61,7 @@ func (s *server) handleConfirmResume(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Не удалось прочитать профиль: "+err.Error())
 		return
 	}
-	if err := saveProfile(profile); err != nil {
+	if err := s.saveCheckedProfile(r.Context(), profile); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -160,4 +161,22 @@ func parseAchievements(text string) []types.Achievement {
 		}
 	}
 	return items
+}
+
+func (s *server) contentChecker() *contentcheck.Checker {
+	s.moderationOnce.Do(func() {
+		if s.moderation == nil {
+			s.moderation = &contentcheck.Checker{Model: llm.NewOllamaClient(s.cfg.ModelURL, s.cfg.ModelName)}
+		}
+	})
+	return s.moderation
+}
+func (s *server) saveCheckedProfile(ctx context.Context, profile types.Resume) error {
+	if err := resumeimport.ValidateProfile(profile); err != nil {
+		return err
+	}
+	if err := s.contentChecker().CheckProfile(ctx, profile); err != nil {
+		return err
+	}
+	return saveProfile(profile)
 }

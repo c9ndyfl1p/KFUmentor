@@ -2,7 +2,9 @@ package localui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"github.com/mihnpro/Ai_agent_2/internal/contentcheck"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -37,7 +39,7 @@ func TestImportPreviewDoesNotWriteUntilConfirmed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/resume", &body)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	recorder := httptest.NewRecorder()
-	s := &server{}
+	s := &server{moderation: &contentcheck.Checker{Model: allowResumeModel{}}}
 	s.handleUploadResume(recorder, req)
 	if recorder.Code != 200 {
 		t.Fatal(recorder.Code, recorder.Body.String())
@@ -70,7 +72,7 @@ func TestImportPreviewDoesNotWriteUntilConfirmed(t *testing.T) {
 func TestInvalidConfirmationKeepsExistingProfile(t *testing.T) {
 	testProfile(t)
 	before, _ := os.ReadFile(localResumePath)
-	s := &server{}
+	s := &server{moderation: &contentcheck.Checker{Model: allowResumeModel{}}}
 	recorder := httptest.NewRecorder()
 	s.handleConfirmResume(recorder, httptest.NewRequest(http.MethodPost, "/api/resume/confirm", strings.NewReader(`{}`)))
 	after, _ := os.ReadFile(localResumePath)
@@ -82,7 +84,7 @@ func TestInvalidConfirmationKeepsExistingProfile(t *testing.T) {
 func TestBasicProfileSaveKeepsStructuredImportedDetails(t *testing.T) {
 	original := testProfile(t)
 	data, _ := json.Marshal(profileInput{Name: original.Name, Title: original.Title, Skills: original.Skills, Experience: formatExperience(original.Experience), Projects: formatProjects(original.Projects), Achievements: formatAchievements(original.Achievements)})
-	s := &server{}
+	s := &server{moderation: &contentcheck.Checker{Model: allowResumeModel{}}}
 	recorder := httptest.NewRecorder()
 	s.handleSaveProfile(recorder, httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(data)))
 	if recorder.Code != 200 {
@@ -107,7 +109,7 @@ func TestResumeBrowserPreview(t *testing.T) {
 		t.Skip("opt-in Chromium UI test")
 	}
 	testProfile(t)
-	s := &server{}
+	s := &server{moderation: &contentcheck.Checker{Model: allowResumeModel{}}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.handleIndex)
 	mux.HandleFunc("GET /static/{file}", func(w http.ResponseWriter, r *http.Request) {
@@ -238,5 +240,39 @@ func TestResumeBrowserPreview(t *testing.T) {
 	}
 	if len(errors) > 0 {
 		t.Fatal(errors)
+	}
+}
+
+type allowResumeModel struct{}
+
+func (allowResumeModel) GenerateStructured(context.Context, string, string, json.RawMessage) (string, error) {
+	return `{"decision":"allow","kind":"resume","reasons":[]}`, nil
+}
+
+type denyResumeModel struct{}
+
+func (denyResumeModel) GenerateStructured(context.Context, string, string, json.RawMessage) (string, error) {
+	return `{"decision":"reject","kind":"resume","reasons":["Посторонние высказывания"]}`, nil
+}
+func TestModerationRejectsBothSaveEndpointsWithoutChangingProfile(t *testing.T) {
+	original := testProfile(t)
+	before, _ := os.ReadFile(localResumePath)
+	s := &server{moderation: &contentcheck.Checker{Model: denyResumeModel{}}}
+	original.Summary = "Посторонние высказывания"
+	data, _ := json.Marshal(original)
+	rec := httptest.NewRecorder()
+	s.handleConfirmResume(rec, httptest.NewRequest("POST", "/api/resume/confirm", bytes.NewReader(data)))
+	if rec.Code == 200 || !strings.Contains(rec.Body.String(), "Посторонние") {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	data, _ = json.Marshal(profileInput{Name: original.Name, Title: original.Title, Summary: original.Summary, Skills: original.Skills})
+	rec = httptest.NewRecorder()
+	s.handleSaveProfile(rec, httptest.NewRequest("PUT", "/api/profile", bytes.NewReader(data)))
+	if rec.Code == 200 || !strings.Contains(rec.Body.String(), "Посторонние") {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	after, _ := os.ReadFile(localResumePath)
+	if !bytes.Equal(before, after) {
+		t.Fatal("rejected profile replaced approved one")
 	}
 }
