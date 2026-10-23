@@ -23,6 +23,7 @@
    title: text(header.querySelector('h1')), company: text(header.querySelector('.vacancy-company__title .link-comp')),
    salary: salary(header.querySelector('.vacancy-header__salary')),
    description: text(desc), requirements, conditions,
+   locations: [...header.querySelectorAll('a[href*="city_id="]')].map(text).filter(Boolean),
    grade: requirements.find(x => /^(Intern|Junior|Middle|Senior|Lead)$/i.test(x)) || '',
    published: header.querySelector('time')?.getAttribute('datetime') || text(header.querySelector('.vacancy-header__date')),
   };

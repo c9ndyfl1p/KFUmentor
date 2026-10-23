@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 )
 
 type OllamaClient struct {
+	Context    context.Context
 	BaseURL    string
 	ModelName  string
 	APIKey     string
@@ -134,11 +136,12 @@ func (c *OllamaClient) generateWithMaxTokens(prompt, systemPrompt, format string
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Post(
-		c.BaseURL+"/api/generate",
-		"application/json",
-		bytes.NewBuffer(jsonData),
-	)
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/api/generate", bytes.NewReader(jsonData))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.doModelRequest(req)
 	if err != nil {
 		return "", fmt.Errorf("HTTP request: %w", err)
 	}

@@ -22,6 +22,10 @@ var parseScript string
 var vacancyPath = regexp.MustCompile(`^/vacancies/[0-9]+$`)
 
 type Job struct {
+	Locations      []string `json:"locations,omitempty"`
+	Status         string   `json:"status,omitempty"`
+	ReviewPoints   []string `json:"reviewPoints,omitempty"`
+	Analysis       string   `json:"analysis,omitempty"`
 	Source         string   `json:"source"`
 	URL            string   `json:"url"`
 	Title          string   `json:"title"`

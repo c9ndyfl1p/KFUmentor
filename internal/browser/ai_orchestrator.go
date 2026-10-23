@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1010,11 +1011,24 @@ func (a *AIOrchestrator) evaluateJobForTaskWithAnalysis(job types.Job, userTask 
 
 // EvaluateCollectedJob applies the hh evaluation rules to a vacancy whose
 // description has already been collected from another public job board.
-func EvaluateCollectedJob(modelURL, modelName string, profile types.Resume, job types.Job, task string) (*JobEvaluationResult, error) {
+func EvaluateCollectedJob(ctx context.Context, modelURL, modelName string, profile types.Resume, job types.Job, task, areaName string) (*JobEvaluationResult, error) {
 	a := &AIOrchestrator{llmClient: llm.NewOllamaClient(modelURL, modelName), resume: profile, jobDetails: map[string]types.Job{}}
+	a.llmClient.Context = ctx
+	a.areaName = areaName
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	job.DescriptionStatus = "ready"
 	a.cacheJobDetails(job.URL, job)
 	return a.evaluateJobForTaskWithAnalysis(job, task)
+}
+
+// ResolveSearchTerms shares the same model prompt and local fallback across boards.
+func ResolveSearchTerms(ctx context.Context, modelURL, modelName, task string) []string {
+	client := llm.NewOllamaClient(modelURL, modelName)
+	client.Context = ctx
+	a := &AIOrchestrator{llmClient: client}
+	return a.searchQueries(task)
 }
 
 func (a *AIOrchestrator) evaluateAllJobsOnPage() (string, error) {

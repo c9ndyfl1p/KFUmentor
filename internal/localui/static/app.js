@@ -1225,7 +1225,7 @@ async function launchSearch(task, profileMatch = false) {
         visible: $("#visible-browser").checked,
       }),
     }));
-    if (habr) starts.push(window.startHabrSearch(task, limit));
+    if (habr) starts.push((starts[0] || Promise.resolve()).catch(() => {}).then(() => window.startHabrSearch(task, limit)));
     const results = await Promise.allSettled(starts);
     const failures = results.filter(result => result.status === "rejected").map(result => result.reason.message);
     showActivityMessage(failures.join("; "), failures.length > 0);
@@ -1329,7 +1329,7 @@ async function refreshState() {
   const state = await request("/api/state");
   hhCaptchaRequired = Boolean(state.captchaRequired);
   syncCaptchaWarning();
-  statusText.textContent = state.status || "Готов к поиску";
+  statusText.textContent = !state.running && window.habrRunning ? window.habrStatus : state.status || "Готов к поиску";
   statusChip.classList.toggle("is-running", Boolean(state.running));
   statusChip.classList.toggle("is-done", !state.running && state.status === "Поиск завершён");
   statusChip.classList.toggle("is-error", !state.running && /ошибк|не удалось/i.test(state.status || ""));

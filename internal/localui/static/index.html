@@ -133,7 +133,7 @@
  <small id="application-policy-description" class="city-hint"></small>
  </div>
  <div class="limits-grid">
-                      <div class="limit-field"><label class="field-label" for="vacancy-limit">Лимит вакансий на каждом сайте</label><input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint"><small id="vacancy-limit-hint" class="city-hint">hh.ru — вакансии по порогу; Хабр — собранные вакансии</small></div>
+                      <div class="limit-field"><label class="field-label" for="vacancy-limit">Лимит вакансий на каждом сайте</label><input id="vacancy-limit" name="vacancyLimit" type="number" min="1" max="100" step="1" value="5" required aria-describedby="vacancy-limit-hint"><small id="vacancy-limit-hint" class="city-hint">Количество вакансий, прошедших порог, на каждом выбранном сайте</small></div>
                       <div class="limit-field"><label class="field-label" for="application-target">Цель по откликам</label><input id="application-target" name="applicationTarget" type="number" min="1" max="100" step="1" value="5" disabled required aria-describedby="application-target-hint"><small id="application-target-hint" class="city-hint">Доступно при включённых откликах</small></div>
                       <div class="limit-field"><label class="field-label" for="minimum-score">Минимальная оценка соответствия</label><input id="minimum-score" name="minimumScore" type="number" min="0" max="10" step="1" value="7" required aria-describedby="minimum-score-hint"><small id="minimum-score-hint" class="city-hint">Ниже порога вакансия пропускается</small></div>
                     </div>
@@ -156,6 +156,7 @@
         <section class="card" data-view="search" aria-labelledby="habr-title" style="padding:24px">
           <h2 id="habr-title">Вакансии Хабр Карьеры</h2>
           <p>Результаты поиска по общей строке. Отклики на Хабре пока не отправляются.</p>
+          <label><input id="habr-show-all" type="checkbox"> Показать также вакансии ниже порога</label>
           <p id="habr-status" role="status" aria-live="polite"></p>
           <div id="habr-cards" class="vacancy-cards"></div>
         </section>

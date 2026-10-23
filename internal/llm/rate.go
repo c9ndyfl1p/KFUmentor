@@ -54,6 +54,9 @@ func waitModelSlot(ctx context.Context) error {
 func (c *OllamaClient) doModelRequest(req *http.Request) (*http.Response, error) {
 	// A single budget includes time spent waiting for the configured rate slot.
 	ctx := req.Context()
+	if c.Context != nil {
+		ctx = c.Context
+	}
 	cancel := func() {}
 	if c.HTTPClient.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.HTTPClient.Timeout)
