@@ -186,6 +186,17 @@ func extractDOCX(data []byte) (string, error) {
 			return "", fmt.Errorf("слишком большой распакованный DOCX")
 		}
 		expanded += f.UncompressedSize64
+		// Verify actual expanded bytes and checksum, including parts not extracted.
+		reader, err := f.Open()
+		if err != nil {
+			return "", fmt.Errorf("повреждённый DOCX")
+		}
+		n, readErr := io.Copy(io.Discard, io.LimitReader(reader, maxXMLBytes+1))
+		reader.Close()
+		if readErr != nil || n > maxXMLBytes || uint64(n) != f.UncompressedSize64 {
+			return "", fmt.Errorf("некорректный распакованный раздел DOCX")
+		}
+
 		if strings.HasSuffix(f.Name, ".rels") {
 			part, err := docxLinks(f)
 			if err != nil {
@@ -249,11 +260,15 @@ func readXMLPart(f *zip.File) (string, error) {
 		return "", fmt.Errorf("не удалось прочитать DOCX")
 	}
 	defer r.Close()
-	decoder := xml.NewDecoder(io.LimitReader(r, maxXMLBytes+1))
+	limited := &io.LimitedReader{R: r, N: maxXMLBytes + 1}
+	decoder := xml.NewDecoder(limited)
 	var text strings.Builder
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
+			if limited.N <= 0 {
+				return "", fmt.Errorf("превышен фактический объём XML DOCX")
+			}
 			break
 		}
 		if err != nil {
@@ -303,11 +318,15 @@ func docxLinks(f *zip.File) (string, error) {
 		return "", err
 	}
 	defer r.Close()
-	decoder := xml.NewDecoder(io.LimitReader(r, maxXMLBytes+1))
+	limited := &io.LimitedReader{R: r, N: maxXMLBytes + 1}
+	decoder := xml.NewDecoder(limited)
 	var text strings.Builder
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
+			if limited.N <= 0 {
+				return "", fmt.Errorf("превышен фактический объём XML DOCX")
+			}
 			break
 		}
 		if err != nil {
