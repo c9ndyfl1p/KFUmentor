@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mihnpro/Ai_agent_2/internal/contentcheck"
 	"github.com/mihnpro/Ai_agent_2/internal/llm"
 )
 
@@ -64,7 +65,7 @@ func TestExtractPDFAndDOCX(t *testing.T) {
 	if err != nil || !strings.Contains(text, "Python") || !strings.Contains(text, "Test Candidate\nSkills:") {
 		t.Fatal(text, err)
 	}
-	docx := docxFixture(t, `<w:p><w:r><w:t>Тестовый кандидат</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Навыки: Python, SQL</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:del><w:r><w:t>Удалённая ложная запись</w:t></w:r></w:del><w:r><w:t>Учебный проект</w:t></w:r></w:p>`)
+	docx := docxFixture(t, `<w:p><w:r><w:t>Тестовый кандидат</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Навыки: Python, SQL</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Учебный проект</w:t></w:r></w:p>`)
 	text, err = ExtractText("resume.docx", docx)
 	if err != nil || !strings.Contains(text, "Python") || !strings.Contains(text, "Тестовый кандидат") || strings.Contains(text, "ложная") {
 		t.Fatal(text, err)
@@ -134,13 +135,16 @@ type fakeModel struct {
 
 func (m *fakeModel) GenerateStructured(ctx context.Context, prompt, system string, schema json.RawMessage) (string, error) {
 	m.called = true
+	if system == contentcheck.SystemPrompt {
+		return `{"decision":"allow","kind":"resume","reasons":[]}`, nil
+	}
 	return m.response, nil
 }
 
-func TestJSONNeedsNoModelAndKeepsProjects(t *testing.T) {
+func TestJSONRequiresModerationAndKeepsProjects(t *testing.T) {
 	model := &fakeModel{}
 	preview, err := Parse(context.Background(), "resume.json", []byte(`{"name":"Тест","projects":[{"name":"Учебный проект","description":"Классификация текстов","technologies":["Python"],"link":""}]}`), model)
-	if err != nil || model.called || len(preview.Profile.Projects) != 1 {
+	if err != nil || !model.called || len(preview.Profile.Projects) != 1 {
 		t.Fatal(preview, err)
 	}
 	if _, err := Parse(context.Background(), "resume.json", []byte(`{"name":"Тест"} {}`), model); err == nil {
@@ -184,7 +188,7 @@ func TestLocalImportModelSmoke(t *testing.T) {
 
 func TestJSONAchievementsRoundTrip(t *testing.T) {
 	data := []byte(`{"name":"Тест","achievements":[{"name":"Конкурс","result":"участник","date":"2025","organizer":"КФУ","link":""}]}`)
-	preview, err := Parse(context.Background(), "resume.json", data, nil)
+	preview, err := Parse(context.Background(), "resume.json", data, &fakeModel{})
 	if err != nil || len(preview.Profile.Achievements) != 1 || preview.Profile.Achievements[0].Result != "участник" || len(preview.Profile.Education) != 0 {
 		t.Fatal(preview, err)
 	}

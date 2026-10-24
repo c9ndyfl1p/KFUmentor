@@ -335,6 +335,9 @@ func (a *AIOrchestrator) drainManualQueue() error {
 					warning = "Письмо не прошло автоматическую проверку фактов. Подготовлен короткий запасной вариант только по сведениям профиля. Проверьте текст перед отправкой."
 				}
 			}
+			if draftErr == nil {
+				draftErr = a.checkOutgoingContent(letter)
+			}
 			err = store.Update(func(st *workflow.State) error {
 				item := st.Entries[e.ID]
 				if detailed, ok := a.cachedJobDetails(e.Job.URL); ok {

@@ -1,8 +1,10 @@
 package browser
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/mihnpro/Ai_agent_2/internal/contentcheck"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -43,7 +45,7 @@ func mockAgent(t *testing.T, handler http.HandlerFunc) *AIOrchestrator {
 		handler(recorder, r)
 		return recorder.Result(), nil
 	})
-	return &AIOrchestrator{llmClient: client, jobDetails: map[string]types.Job{}, letterExamplesPath: filepath.Join(t.TempDir(), "examples.json")}
+	return &AIOrchestrator{moderation: &contentcheck.Checker{Model: allowContentModel{}}, llmClient: client, jobDetails: map[string]types.Job{}, letterExamplesPath: filepath.Join(t.TempDir(), "examples.json")}
 }
 
 func TestPlanUsesModelQueriesAndExplicitApplicationPermission(t *testing.T) {
@@ -358,4 +360,16 @@ func TestLetterReviewBlocksInvalidAndContradictoryResponses(t *testing.T) {
 	if review, err := parseLetterReview(`{"supported":false,"unsupported_claims":["пять лет стажа"]}`); err != nil || review.Supported == nil || *review.Supported {
 		t.Fatal(review, err)
 	}
+}
+
+// Existing scoring/factuality tests explicitly use an approving content checker.
+// Content rejection and pre-send gates are covered separately.
+type allowContentModel struct{}
+
+func (allowContentModel) GenerateStructured(_ context.Context, p, _ string, _ json.RawMessage) (string, error) {
+	var input struct {
+		Kind string `json:"kind"`
+	}
+	json.Unmarshal([]byte(p), &input)
+	return `{"decision":"allow","kind":"` + input.Kind + `","reasons":[]}`, nil
 }
